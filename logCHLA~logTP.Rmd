@@ -17,9 +17,9 @@ editor_options:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE,
- fig.width = 6,
- fig.asp = 0.8,
- out.width = "80%"
+                      fig.width = 6,
+                      fig.asp = 0.8,
+                      out.width = "80%"
 )
 knitr::opts_chunk$set(error = TRUE)
 
@@ -225,7 +225,68 @@ df2 <- df2 %>%
          "Log(N:P)"=NPratio,
          "Lake temperature"=`TEMPERATURE, WATER_OW_NA`,
          "True color"=`TRUE COLOR_OW_T`)
-
+lin.mod.res <- function(x){
+  for(i in cols){
+    lm.loop <- lm(res.lm ~ df2[,i], data=df2) #linear model of residuals against variable
+    p1 <- ggplot(df2,aes(x=df2[,i],y=res.lm))+
+      geom_point()+
+      geom_smooth(method='lm')+ 
+      labs(x=paste(colnames(df2[i])),
+           y='residuals of LM(logCHLA~logTP)')
+    if(colnames(df2[i])=="Sample date"){
+      p1 <- p1+scale_x_date(date_labels="%Y")
+    }
+    p2 <- ggplot(data=df2, aes(x=df2[,i])) +
+      geom_density(fill="grey") +
+      theme(axis.title.x=element_blank(),
+            axis.text.x=element_blank(),
+            axis.ticks.x=element_blank(),
+            axis.title.y=element_blank(),
+            axis.text.y=element_blank(),
+            axis.ticks.y=element_blank(),
+            panel.grid=element_blank(),
+            axis.line=element_blank(),
+            panel.background = element_blank())
+    if(i==11){
+      dat <- df2
+      dat[,i]<-log(as.numeric(df2[,i]))
+      dat <- dat %>%
+        select(res.lm,"Log(N:P)") %>%
+        na.omit(dat)
+      dat <- dat[!is.infinite(dat$`Log(N:P)`),]
+      lm.loop <- lm(res.lm ~ `Log(N:P)`,dat) 
+      p1 <- ggplot(dat,aes(x=`Log(N:P)`,y=res.lm))+
+        geom_point()+
+        geom_smooth(method='lm')+ 
+        labs(x=paste(colnames(df2[i])),
+             y='residuals of LM(logCHLA~logTP)')
+      p2 <- ggplot(data=dat, aes(x=`Log(N:P)`)) +
+        geom_density(fill="grey") +
+        theme(axis.title.x=element_blank(),
+              axis.text.x=element_blank(),
+              axis.ticks.x=element_blank(),
+              axis.title.y=element_blank(),
+              axis.text.y=element_blank(),
+              axis.ticks.y=element_blank(),
+              panel.grid=element_blank(),
+              axis.line=element_blank(),
+              panel.background = element_blank())
+    }
+    require(gridExtra)
+    grid.arrange(p2, p1, ncol = 1, heights = c(1, 4))
+    stats[nrow(stats)+1,] <- c(colnames(df2[i]),
+                               coef(lm.loop),
+                               summary(lm.loop)$coefficients[2,4],
+                               summary(lm.loop)$r.squared)
+    vars[nrow(vars)+1,] <- c(colnames(df2)[i],
+                             paste(min(as.numeric(na.omit(df2[,i]))),
+                                   "-",max(as.numeric(na.omit(df2[,i])))),
+                             nrow(df2[i]),
+                             paste(median(as.numeric(na.omit(df2[,i]))),
+                                   "(",summary(as.numeric(na.omit(df2[,i])))[2],
+                                   "-",summary(as.numeric(na.omit(df2[,i])))[5],")")) #stats
+  }
+}
 for(i in cols){
   lm.loop <- lm(res.lm ~ df2[,i], data=df2) #linear model of residuals against variable
   p1 <- ggplot(df2,aes(x=df2[,i],y=res.lm))+
@@ -239,14 +300,14 @@ for(i in cols){
   p2 <- ggplot(data=df2, aes(x=df2[,i])) +
     geom_density(fill="grey") +
     theme(axis.title.x=element_blank(),
-        axis.text.x=element_blank(),
-        axis.ticks.x=element_blank(),
-        axis.title.y=element_blank(),
-        axis.text.y=element_blank(),
-        axis.ticks.y=element_blank(),
-        panel.grid=element_blank(),
-        axis.line=element_blank(),
-        panel.background = element_blank())
+          axis.text.x=element_blank(),
+          axis.ticks.x=element_blank(),
+          axis.title.y=element_blank(),
+          axis.text.y=element_blank(),
+          axis.ticks.y=element_blank(),
+          panel.grid=element_blank(),
+          axis.line=element_blank(),
+          panel.background = element_blank())
   if(i==11){
     dat <- df2
     dat[,i]<-log(as.numeric(df2[,i]))
@@ -271,7 +332,7 @@ for(i in cols){
             panel.grid=element_blank(),
             axis.line=element_blank(),
             panel.background = element_blank())
-    }
+  }
   require(gridExtra)
   grid.arrange(p2, p1, ncol = 1, heights = c(1, 4))
   stats[nrow(stats)+1,] <- c(colnames(df2[i]),
@@ -283,8 +344,8 @@ for(i in cols){
                                  "-",max(as.numeric(na.omit(df2[,i])))),
                            nrow(df2[i]),
                            paste(median(as.numeric(na.omit(df2[,i]))),
-                           "(",summary(as.numeric(na.omit(df2[,i])))[2],
-                           "-",summary(as.numeric(na.omit(df2[,i])))[5],")")) #stats
+                                 "(",summary(as.numeric(na.omit(df2[,i])))[2],
+                                 "-",summary(as.numeric(na.omit(df2[,i])))[5],")")) #stats
 }
 ```
 
@@ -314,12 +375,12 @@ stats[nrow(stats)+1,] <- c("ACID DEPOSITION",
                            summary(lm.acid.all)$coefficients[2,4],
                            summary(lm.acid.all)$r.squared) #coefficients
 vars[nrow(vars)+1,] <- c("ACID DEPOSITION",
-                           paste(min(as.numeric(na.omit(acid$acid))),
-                                 "-",max(as.numeric(na.omit(acid$acid)))),
-                           nrow(acid),
-                           paste(median(as.numeric(na.omit(acid$acid))),
-                           "(",summary(as.numeric(na.omit(acid$acid)))[2],
-                           "-",summary(as.numeric(na.omit(acid$acid)))[5],")"))
+                         paste(min(as.numeric(na.omit(acid$acid))),
+                               "-",max(as.numeric(na.omit(acid$acid)))),
+                         nrow(acid),
+                         paste(median(as.numeric(na.omit(acid$acid))),
+                               "(",summary(as.numeric(na.omit(acid$acid)))[2],
+                               "-",summary(as.numeric(na.omit(acid$acid)))[5],")"))
 
 # lm.acid.a <- lm(res~acid, data=acid.a)
 # p1 <- ggplot(data=acid.a, aes(x=acid,y=res))+
@@ -407,7 +468,7 @@ p2 <- ggplot(data=merge, aes(x=precip))+
         panel.grid=element_blank(),
         axis.line=element_blank(),
         panel.background = element_blank()
-        )
+  )
 require(gridExtra)
 grid.arrange(p2, p1, ncol = 1, heights = c(1, 5))
 stats[nrow(stats)+1,] <- c("PRECIPITATION",
@@ -415,12 +476,12 @@ stats[nrow(stats)+1,] <- c("PRECIPITATION",
                            summary(lm.rain)$coefficients[2,4],
                            summary(lm.rain)$r.squared) #coefficients
 vars[nrow(vars)+1,] <- c("PRECIPITATION",
-                           paste(min(as.numeric(na.omit(merge$precip))),
-                                 "-",max(as.numeric(na.omit(merge$precip)))),
-                           nrow(merge),
-                           paste(median(as.numeric(na.omit(merge$precip))),
-                           "(",summary(as.numeric(na.omit(merge$precip)))[2],
-                           "-",summary(as.numeric(na.omit(merge$precip)))[5],")"))
+                         paste(min(as.numeric(na.omit(merge$precip))),
+                               "-",max(as.numeric(na.omit(merge$precip)))),
+                         nrow(merge),
+                         paste(median(as.numeric(na.omit(merge$precip))),
+                               "(",summary(as.numeric(na.omit(merge$precip)))[2],
+                               "-",summary(as.numeric(na.omit(merge$precip)))[5],")"))
 
 # #nitrate/nitrite
 # lm.below <- lm(res.lm ~ `NITROGEN, NITRATE-NITRITE_OW_T`,sub.below)
@@ -543,25 +604,25 @@ stats[nrow(stats)+1,] <- c("COLOR (LOW)",
                            summary(alm)$coefficients[2,4],
                            summary(alm)$r.squared) #coefficients
 vars[nrow(vars)+1,] <- c("COLOR (LOW)",
-                           paste(min(as.numeric(na.omit(a$`TRUE COLOR_OW_T`))),
-                                 "-",max(as.numeric(na.omit(
-                                   a$`TRUE COLOR_OW_T`)))),
-                           nrow(a),
-                           paste(median(as.numeric(na.omit(a$`TRUE COLOR_OW_T`))),
-                           "(",summary(as.numeric(na.omit(a$`TRUE COLOR_OW_T`)))[2],
-                           "-",summary(as.numeric(na.omit(a$`TRUE COLOR_OW_T`)))[5],")"))
+                         paste(min(as.numeric(na.omit(a$`TRUE COLOR_OW_T`))),
+                               "-",max(as.numeric(na.omit(
+                                 a$`TRUE COLOR_OW_T`)))),
+                         nrow(a),
+                         paste(median(as.numeric(na.omit(a$`TRUE COLOR_OW_T`))),
+                               "(",summary(as.numeric(na.omit(a$`TRUE COLOR_OW_T`)))[2],
+                               "-",summary(as.numeric(na.omit(a$`TRUE COLOR_OW_T`)))[5],")"))
 stats[nrow(stats)+1,] <- c("COLOR (HIGH)",
                            coef(blm),
                            summary(blm)$coefficients[2,4],
                            summary(blm)$r.squared) #coefficients
 vars[nrow(vars)+1,] <- c("COLOR (HIGH)",
-                           paste(min(as.numeric(na.omit(b$`TRUE COLOR_OW_T`))),
-                                 "-",max(as.numeric(na.omit(
-                                   b$`TRUE COLOR_OW_T`)))),
-                           nrow(b),
-                           paste(median(as.numeric(na.omit(b$`TRUE COLOR_OW_T`))),
-                           "(",summary(as.numeric(na.omit(b$`TRUE COLOR_OW_T`)))[2],
-                           "-",summary(as.numeric(na.omit(b$`TRUE COLOR_OW_T`)))[5],")"))
+                         paste(min(as.numeric(na.omit(b$`TRUE COLOR_OW_T`))),
+                               "-",max(as.numeric(na.omit(
+                                 b$`TRUE COLOR_OW_T`)))),
+                         nrow(b),
+                         paste(median(as.numeric(na.omit(b$`TRUE COLOR_OW_T`))),
+                               "(",summary(as.numeric(na.omit(b$`TRUE COLOR_OW_T`)))[2],
+                               "-",summary(as.numeric(na.omit(b$`TRUE COLOR_OW_T`)))[5],")"))
 ```
 
 ### Model statistics
@@ -580,7 +641,7 @@ stats <- stats %>%
   arrange(desc(as.numeric(rsquared)))
 stats_hux <- as_hux(stats)
 stats_hux <- map_bold(stats_hux, everywhere, "p.value",
-      by_ranges(0.05, c(TRUE, FALSE)))
+                      by_ranges(0.05, c(TRUE, FALSE)))
 theme_plain(stats_hux)
 detach(package:huxtable, unload=TRUE) #to prevent confusion
 ```
@@ -605,9 +666,9 @@ vars <- data.frame(characteristic=character(),
 cols <- c(9,10,11,15,16)
 for(i in cols){
   recent <- data.frame(LAKE_ID=as.character(),
-                     year=as.numeric(),
-                     result=as.numeric(),
-                     resid=as.numeric())
+                       year=as.numeric(),
+                       result=as.numeric(),
+                       resid=as.numeric())
   for(j in 1:length(LAKE_IDS)){
     loop <- df2 %>%
       select(LAKE_ID,year,matches(paste(names(df2)[i])),res.lm) %>%
@@ -623,7 +684,7 @@ for(i in cols){
     geom_smooth(method="lm") +
     labs(x=paste(names(df2)[i]),
          y='residuals of LM(logCHLA~logTP)')+
-  theme(legend.justification=c(1,1),legend.position=c(1,1))
+    theme(legend.justification=c(1,1),legend.position=c(1,1))
   p2 <- ggplot(data=recent, aes(x=result)) +
     geom_density(fill="grey") +
     theme(axis.title.x=element_blank(),
@@ -650,7 +711,7 @@ for(i in cols){
                            paste(median(as.numeric(na.omit(recent$result))),
                                  "(",summary(as.numeric(na.omit(recent$result)))[2],
                                  "-",summary(as.numeric(na.omit(recent$result)))[5],")")
-                           ) #stats 
+  ) #stats 
 }
 
 
@@ -673,7 +734,7 @@ for(i in 1:length(LAKE_IDS)){
     loop$`DEPTH, BOTTOM_OW_NA` <- d
     loop <- loop[loop$year==y,]
     recent[(nrow(recent)+1):(nrow(recent)+nrow(loop)),] <- loop[1:nrow(loop),]
-    }else{}
+  }else{}
 }
 lm.dep <- lm(res~depth,data=recent)
 p1 <- ggplot(data=recent,aes(x=depth,y=res))+
@@ -700,14 +761,14 @@ stats[nrow(stats)+1,] <- c("LAKE DEPTH",
                            summary(lm.dep)$coefficients[2,4],
                            summary(lm.dep)$r.squared) #coefficients
 vars[nrow(vars)+1,] <- c("LAKE DEPTH",
-                           paste(min(as.numeric(na.omit(recent$year))),
-                                 "-",max(as.numeric(na.omit(recent$year)))),
-                           paste(min(as.numeric(na.omit(recent$depth))),
-                                 "-",max(as.numeric(na.omit(recent$depth)))),
-                           nrow(recent),
-                           median(as.numeric(na.omit(recent$result))),
-                                 "(",summary(as.numeric(na.omit(recent$depth)))[2],
-                                 "-",summary(as.numeric(na.omit(recent$depth)))[5],")") #stats
+                         paste(min(as.numeric(na.omit(recent$year))),
+                               "-",max(as.numeric(na.omit(recent$year)))),
+                         paste(min(as.numeric(na.omit(recent$depth))),
+                               "-",max(as.numeric(na.omit(recent$depth)))),
+                         nrow(recent),
+                         median(as.numeric(na.omit(recent$result))),
+                         "(",summary(as.numeric(na.omit(recent$depth)))[2],
+                         "-",summary(as.numeric(na.omit(recent$depth)))[5],")") #stats
 
 #acid
 recent <- data.frame(LAKE_ID=as.character(),
@@ -748,14 +809,14 @@ stats[nrow(stats)+1,] <- c("ACID DEPOSITION (DIN:TP>1.5)",
                            summary(lm.acid.a)$coefficients[2,4],
                            summary(lm.acid.a)$r.squared) #coefficients
 vars[nrow(vars)+1,] <- c("ACID DEPOSITION (DIN:TP>1.5)",
-                           paste(min(as.numeric(na.omit(recent$year))),
-                                 "-",max(as.numeric(na.omit(recent$year)))),
-                           paste(min(as.numeric(na.omit(recent$acid))),
-                                 "-",max(as.numeric(na.omit(recent$acid)))),
-                           nrow(recent),
-                           median(as.numeric(na.omit(recent$result))),
-                                 "(",summary(as.numeric(na.omit(recent$acid)))[2],
-                                 "-",summary(as.numeric(na.omit(recent$acid)))[5],")")#stats
+                         paste(min(as.numeric(na.omit(recent$year))),
+                               "-",max(as.numeric(na.omit(recent$year)))),
+                         paste(min(as.numeric(na.omit(recent$acid))),
+                               "-",max(as.numeric(na.omit(recent$acid)))),
+                         nrow(recent),
+                         median(as.numeric(na.omit(recent$result))),
+                         "(",summary(as.numeric(na.omit(recent$acid)))[2],
+                         "-",summary(as.numeric(na.omit(recent$acid)))[5],")")#stats
 
 recent <- data.frame(LAKE_ID=as.character(),
                      year=as.numeric(),
@@ -795,14 +856,14 @@ stats[nrow(stats)+1,] <- c("ACID DEPOSITION (DIN:TP<1.5)",
                            summary(lm.acid.a)$coefficients[2,4],
                            summary(lm.acid.a)$r.squared) #coefficients
 vars[nrow(vars)+1,] <- c("ACID DEPOISITION (DIN:TP<1.5)",
-                           paste(min(as.numeric(na.omit(recent$year))),
-                                 "-",max(as.numeric(na.omit(recent$year)))),
-                           paste(min(as.numeric(na.omit(recent$acid))),
-                                 "-",max(as.numeric(na.omit(recent$acid)))),
-                           nrow(recent),
-                           median(as.numeric(na.omit(recent$result))),
-                                 "(",summary(as.numeric(na.omit(recent$acid)))[2],
-                                 "-",summary(as.numeric(na.omit(recent$acid)))[5],")") #stats
+                         paste(min(as.numeric(na.omit(recent$year))),
+                               "-",max(as.numeric(na.omit(recent$year)))),
+                         paste(min(as.numeric(na.omit(recent$acid))),
+                               "-",max(as.numeric(na.omit(recent$acid)))),
+                         nrow(recent),
+                         median(as.numeric(na.omit(recent$result))),
+                         "(",summary(as.numeric(na.omit(recent$acid)))[2],
+                         "-",summary(as.numeric(na.omit(recent$acid)))[5],")") #stats
 
 
 #precipitation
@@ -837,7 +898,7 @@ p2 <- ggplot(data=recent, aes(x=precip))+
         panel.grid=element_blank(),
         axis.line=element_blank(),
         panel.background = element_blank()
-        )
+  )
 require(gridExtra)
 grid.arrange(p2, p1, ncol = 1, heights = c(1, 5))
 stats[nrow(stats)+1,] <- c("PRECIPITATION",
@@ -845,14 +906,14 @@ stats[nrow(stats)+1,] <- c("PRECIPITATION",
                            summary(lm.rain)$coefficients[2,4],
                            summary(lm.rain)$r.squared) #coefficients
 vars[nrow(vars)+1,] <- c("PRECIPITATION",
-                           paste(min(as.numeric(na.omit(recent$year))),
-                                 "-",max(as.numeric(na.omit(recent$year)))),
-                           paste(min(as.numeric(na.omit(recent$precip))),
-                                 "-",max(as.numeric(na.omit(recent$precip)))),
-                           nrow(recent),
-                           median(as.numeric(na.omit(recent$result))),
-                                 "(",summary(as.numeric(na.omit(recent$acid)))[2],
-                                 "-",summary(as.numeric(na.omit(recent$acid)))[5],")")#stats
+                         paste(min(as.numeric(na.omit(recent$year))),
+                               "-",max(as.numeric(na.omit(recent$year)))),
+                         paste(min(as.numeric(na.omit(recent$precip))),
+                               "-",max(as.numeric(na.omit(recent$precip)))),
+                         nrow(recent),
+                         median(as.numeric(na.omit(recent$result))),
+                         "(",summary(as.numeric(na.omit(recent$acid)))[2],
+                         "-",summary(as.numeric(na.omit(recent$acid)))[5],")")#stats
 
 #nitrate/nitrite
 recent <- data.frame(LAKE_ID=as.character(),
@@ -886,7 +947,7 @@ p2 <- ggplot(data=recent, aes(x=TN))+
         panel.grid=element_blank(),
         axis.line=element_blank(),
         panel.background = element_blank()
-        )
+  )
 require(gridExtra)
 grid.arrange(p2, p1, ncol = 1, heights = c(1, 5))
 stats[nrow(stats)+1,] <- c("NITRATE+NITRITE (DIN:TP<1.5)",
@@ -894,14 +955,14 @@ stats[nrow(stats)+1,] <- c("NITRATE+NITRITE (DIN:TP<1.5)",
                            summary(lm.below)$coefficients[2,4],
                            summary(lm.below)$r.squared) #coefficients
 vars[nrow(vars)+1,] <- c("NITRATE+NITRITE (DIN:TP<1.5)",
-                           paste(min(as.numeric(na.omit(recent$year))),
-                                 "-",max(as.numeric(na.omit(recent$year)))),
-                           paste(min(as.numeric(na.omit(recent$TN))),
-                                 "-",max(as.numeric(na.omit(recent$TN)))),
-                           nrow(recent),
-                           median(as.numeric(na.omit(recent$result))),
-                                 "(",summary(as.numeric(na.omit(recent$TN)))[2],
-                                 "-",summary(as.numeric(na.omit(recent$TN)))[5],")")#stats
+                         paste(min(as.numeric(na.omit(recent$year))),
+                               "-",max(as.numeric(na.omit(recent$year)))),
+                         paste(min(as.numeric(na.omit(recent$TN))),
+                               "-",max(as.numeric(na.omit(recent$TN)))),
+                         nrow(recent),
+                         median(as.numeric(na.omit(recent$result))),
+                         "(",summary(as.numeric(na.omit(recent$TN)))[2],
+                         "-",summary(as.numeric(na.omit(recent$TN)))[5],")")#stats
 
 recent <- data.frame(LAKE_ID=as.character(),
                      year=as.numeric(),
@@ -934,7 +995,7 @@ p2 <- ggplot(data=recent, aes(x=TN))+
         panel.grid=element_blank(),
         axis.line=element_blank(),
         panel.background = element_blank()
-        )
+  )
 require(gridExtra)
 grid.arrange(p2, p1, ncol = 1, heights = c(1, 5))
 stats[nrow(stats)+1,] <- c("NITRATE+NITRITE (DIN:TP>1.5)",
@@ -942,14 +1003,14 @@ stats[nrow(stats)+1,] <- c("NITRATE+NITRITE (DIN:TP>1.5)",
                            summary(lm.above)$coefficients[2,4],
                            summary(lm.above)$r.squared) #coefficients
 vars[nrow(vars)+1,] <- c("NITRATE+NITRITE (DIN:TP>1.5)",
-                           paste(min(as.numeric(na.omit(recent$year))),
-                                 "-",max(as.numeric(na.omit(recent$year)))),
-                           paste(min(as.numeric(na.omit(recent$TN))),
-                                 "-",max(as.numeric(na.omit(recent$TN)))),
-                           nrow(recent),
-                           median(as.numeric(na.omit(recent$result))),
-                                 "(",summary(as.numeric(na.omit(recent$TN)))[2],
-                                 "-",summary(as.numeric(na.omit(recent$TN)))[5],")")#stats
+                         paste(min(as.numeric(na.omit(recent$year))),
+                               "-",max(as.numeric(na.omit(recent$year)))),
+                         paste(min(as.numeric(na.omit(recent$TN))),
+                               "-",max(as.numeric(na.omit(recent$TN)))),
+                         nrow(recent),
+                         median(as.numeric(na.omit(recent$result))),
+                         "(",summary(as.numeric(na.omit(recent$TN)))[2],
+                         "-",summary(as.numeric(na.omit(recent$TN)))[5],")")#stats
 
 ```
 
@@ -971,7 +1032,7 @@ stats <- stats %>%
   arrange(desc(as.numeric(rsquared)))
 stats_hux <- as_hux(stats)
 stats_hux <- map_bold(stats_hux, everywhere, "p.value",
-      by_ranges(0.05, c(TRUE, FALSE)))
+                      by_ranges(0.05, c(TRUE, FALSE)))
 theme_plain(stats_hux)
 detach(package:huxtable, unload=TRUE) #to prevent confusion
 ```
@@ -1045,7 +1106,7 @@ stats[nrow(stats)+1,] <- c("Low color",
 library(huxtable)
 stats_hux <- as_hux(stats)
 stats_hux <- map_bold(stats_hux, everywhere, "p.value",
-      by_ranges(0.05, c(TRUE, FALSE)))
+                      by_ranges(0.05, c(TRUE, FALSE)))
 theme_plain(stats_hux)
 detach(package:huxtable, unload=TRUE)
 ```
@@ -1131,7 +1192,7 @@ stats[nrow(stats)+1,] <- c("Decreasing color",
 library(huxtable)
 stats_hux <- as_hux(stats)
 stats_hux <- map_bold(stats_hux, everywhere, "p.value",
-      by_ranges(0.05, c(TRUE, FALSE)))
+                      by_ranges(0.05, c(TRUE, FALSE)))
 theme_plain(stats_hux)
 detach(package:huxtable, unload=TRUE)
 ```
@@ -1196,7 +1257,7 @@ Coefficients for linear models of residuals along gradient of time for each lake
 library(huxtable)
 coeffs_hux <- as_hux(coeffs)
 coeffs_hux <- map_bold(coeffs_hux, everywhere, "p.value",
-      by_ranges(0.05, c(TRUE, FALSE)))
+                       by_ranges(0.05, c(TRUE, FALSE)))
 theme_plain(coeffs_hux)
 detach(package:huxtable, unload=TRUE) #to prevent confusion
 
@@ -1219,8 +1280,8 @@ for(i in 1:nrow(coeffs)){
   }
 }
 
-  
-  
+
+
 slope.plot <- ggplot(coeffs) +
   geom_boxplot(width=0.1,aes(x=x,y=slope)) +
   geom_dotplot(binaxis='y',stackdir='center', dotsize=0.5, show.legend = FALSE,aes(x=x,y=slope,fill=sig,colour=sig)) +
