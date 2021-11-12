@@ -1,0 +1,1292 @@
+---
+title: "Relationship of Chlorophyll and Phosphorous in NY lakes"
+author: "Sabrina Xie"
+date: "Last compiled `r format(Sys.time(), '%d %B, %Y, %X')`"
+output:  
+  html_document: 
+    toc: yes
+    toc_depth: 6
+    toc_float:
+      collapsed: no
+    code_folding: hide
+    theme: paper
+    highlight: zenburn
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+ fig.width = 6,
+ fig.asp = 0.8,
+ out.width = "80%"
+)
+knitr::opts_chunk$set(error = TRUE)
+
+
+library(tidyverse)
+library(mgcv)
+library(visreg)
+library(grid)
+```
+
+Determining the effects of lake variables on the relationship of TP (log transformed ug/L) with Chl-a concentrations (log transformed ug/L), using the gradient of residuals against variables.
+
+# Linear model of logCHLA~logTP
+
+```{r linear model 1, echo=FALSE, results='asis', message=FALSE, warning=FALSE}
+#get data from database
+setwd("~/OneDrive - New York State Office of Information Technology Services/Rscripts")
+source("~/OneDrive - New York State Office of Information Technology Services/Rscripts/retrieve database stuff.R")
+setwd("~/OneDrive - New York State Office of Information Technology Services/Rscripts/Trend")
+
+#arrange data
+#df <- read.csv("junk.sabrina.chl.predictors.csv")
+df <- temp
+df <- df[df$`CHLOROPHYLL A_OW_T` > 0,]
+df$logCHLA <- log(df$`CHLOROPHYLL A_OW_T`)
+df <- df[df$PHOSPHORUS_OW_T > 0,]
+df$logTP <- log(df$PHOSPHORUS_OW_T)
+LAKE_IDS <- unique(df$LAKE_ID) #list lakes
+df <- df[!is.na(df$LAKE_ID),]
+
+library(MASS)
+#acid data
+acid <- read.csv("junk.acid.for.sabrina.csv")
+acid <- merge(acid, df, by.y = c("year","LAKE_ID"), by.x = c("year","LAKE_ID"), all.x = TRUE)
+acid <- na.omit(acid)
+
+lm.acid <- lm(logCHLA~logTP,data=acid) #linear model
+acid$studres <- studres(lm.acid) #studentized residuals
+acid <- acid %>% 
+  filter(between(studres,-3,3)) #remove outliers
+lm.acid <- lm(logCHLA~logTP,data=acid) #linear model again
+acid$res <- resid(lm.acid) #residuals
+acid <- na.omit(acid)
+acid.b <- acid[acid$NPratio<1.5,]
+acid.a <- acid[acid$NPratio>1.5,]
+
+detach(package:MASS, unload=TRUE) #to prevent confusion
+
+```
+
+## Initial log-transformed linear model {.tabset}
+
+### Scatterplot
+
+```{r linear model 2, class.source = 'fold-show'}
+lm1 <- lm(logCHLA~logTP, data=df)
+df$res.lm <- resid(lm1)
+```
+
+```{r plot}
+plot.lm1 <- ggplot(df,aes(x=logTP,y=logCHLA))+
+  geom_point()+
+  geom_smooth(method='lm')+
+  labs(title="Linear log-log model",x="log TP",y="log CHLA")
+print(plot.lm1)
+```
+
+### Model statistics
+
+```{r summary}
+summary(lm1)
+```
+
+```{r anova}
+anova(lm1)
+```
+
+### Residual plots
+```{r resid plots, echo=FALSE, results='asis', message=FALSE, warning=FALSE, fig.show="hold", out.width="50%"}
+plot(lm1)
+hist(resid(lm1))
+```
+
+## Remove outliers and rerun model {.tabset}
+
+### Identify outliers
+
+Outliers were identified as points with studentized residuals outside 3:-3
+
+```{r outliers, echo=FALSE, results='asis', message=FALSE, warning=FALSE}
+library(MASS)
+
+#outliers
+df$studres <- studres(lm1) #generating studentized residuals
+plot.studres <- ggplot(df,aes(y=studres,x=as.numeric(row.names(df))))+
+  geom_point()+
+  geom_abline(slope=0,intercept=3,color="red")+
+  geom_abline(slope=0,intercept=-3,color="red")+
+  labs(title="Studentized residuals of linear model") #plotting studentized residuals
+print(plot.studres)
+df2 <- df %>% 
+  filter(between(studres,-3,3)) #remove studentized residuals outside of range -3 to 3
+df2 <- as.data.frame(df2)
+library(lubridate)
+df2$SAMPLE_DATE <- as_date(df2$SAMPLE_DATE)
+df.outs <- df %>% 
+  filter(!between(studres,-3,3)) #outliers
+plot.outs <- ggplot(data=NULL,aes(x=logCHLA,y=logTP))+
+  geom_point(data=df)+
+  geom_point(data=df.outs,color="red",shape="cross",size=3)+ #cross out outliers
+  labs(title="Outliers removed shown crossed out in red")
+print(plot.outs) #plot showing data points removed as outliers
+detach(package:MASS, unload=TRUE) #to prevent confusion
+
+#model without outliers
+lm2 <- lm(logCHLA~logTP, data=df2)
+df2$res.lm <- resid(lm2)
+
+```
+
+### Scatterplot without outliers
+
+```{r scatterplot, class.source = 'fold-show'}
+
+plot.lm2<- ggplot(df2,aes(x=logTP,y=logCHLA))+
+  geom_point()+
+  geom_smooth(method='lm')+
+  labs(title="Linear log-log model without outliers",x="log TP",y="log CHLA")
+print(plot.lm2)
+
+```
+
+### Model statistics
+
+```{r summary2}
+summary(lm2)
+```
+
+```{r anova2}
+anova(lm2)
+```
+
+### Residual plots
+```{r resid plots2, echo=FALSE, results="asis", message=FALSE, warning=FALSE, fig.show="hold", out.width="50%"}
+plot(lm2)
+hist(resid(lm2))
+```
+
+# Variable effects on model residuals
+
+## Relationship of model residuals to lake characteristic variables {.tabset}
+
+```{r stats, echo=FALSE, results='asis', message=FALSE, warning=FALSE}
+
+#precipitation data
+library(readxl)
+rain <- read_xlsx("~/OneDrive - New York State Office of Information Technology Services/Rscripts/Trend/Trend_Lakes_AVG_Annual_Precip_cm-yr.xlsx")
+rain <- pivot_longer(rain,2:33)
+rain$name <- substr(rain$name,1,4)
+colnames(rain) <- c("LAKE_ID","year","precip")
+merge <- merge(rain, df2, by.y = c("year","LAKE_ID"), by.x = c("year","LAKE_ID"), all.x = TRUE)
+merge <- na.omit(merge)
+
+#nitrate/nitrite ratio
+sub.below <- df2[df2$NPratio<1.5,]
+sub.above <- df2[df2$NPratio>1.5,]
+
+# vars <- data.frame(characteristic=c("a","b","c","d","e","f","g","h","i","j"),
+#                    min=1,
+#                    q1=1,
+#                    median=1,
+#                    median=1,
+#                    q3=1,
+#                    max=1,
+#                    n=1,
+#                    se=1)
+
+```
+
+### Residual plots
+
+Pattern of logCHLA~logTP model residuals along gradients of variables. All variables are fitted to a linear model on the residuals.
+
+```{r stats setup, echo=FALSE, results='asis', message=FALSE, warning=FALSE}
+# variable residuals
+stats <- data.frame(characteristic=character(),
+                    intercept=double(),
+                    slope=double(),
+                    "p-value"=double(),
+                    rsquared=double()) #blank stat table
+vars <- data.frame(characteristic=character(),
+                   range=character(),
+                   n=double(),
+                   "median (IQR)"=character())
+```
+
+```{r plot loop, message=FALSE, warning=FALSE, fig.show="hold", out.width="50%"}
+cols <- c(2,9,10,11,15,16)
+
+df2 <- df2 %>%
+  rename("Sample date"=SAMPLE_DATE,
+         "Secchi disk depth"=`DEPTH, SECCHI DISK DEPTH_SD_NA`,
+         "Log(N:P)"=NPratio,
+         "Lake temperature"=`TEMPERATURE, WATER_OW_NA`,
+         "True color"=`TRUE COLOR_OW_T`)
+
+for(i in cols){
+  lm.loop <- lm(res.lm ~ df2[,i], data=df2) #linear model of residuals against variable
+  p1 <- ggplot(df2,aes(x=df2[,i],y=res.lm))+
+    geom_point()+
+    geom_smooth(method='lm')+ 
+    labs(x=paste(colnames(df2[i])),
+         y='residuals of LM(logCHLA~logTP)')
+  if(colnames(df2[i])=="Sample date"){
+    p1 <- p1+scale_x_date(date_labels="%Y")
+  }
+  p2 <- ggplot(data=df2, aes(x=df2[,i])) +
+    geom_density(fill="grey") +
+    theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        panel.grid=element_blank(),
+        axis.line=element_blank(),
+        panel.background = element_blank())
+  if(i==11){
+    dat <- df2
+    dat[,i]<-log(as.numeric(df2[,i]))
+    dat <- dat %>%
+      select(res.lm,"Log(N:P)") %>%
+      na.omit(dat)
+    dat <- dat[!is.infinite(dat$`Log(N:P)`),]
+    lm.loop <- lm(res.lm ~ `Log(N:P)`,dat) 
+    p1 <- ggplot(dat,aes(x=`Log(N:P)`,y=res.lm))+
+      geom_point()+
+      geom_smooth(method='lm')+ 
+      labs(x=paste(colnames(df2[i])),
+           y='residuals of LM(logCHLA~logTP)')
+    p2 <- ggplot(data=dat, aes(x=`Log(N:P)`)) +
+      geom_density(fill="grey") +
+      theme(axis.title.x=element_blank(),
+            axis.text.x=element_blank(),
+            axis.ticks.x=element_blank(),
+            axis.title.y=element_blank(),
+            axis.text.y=element_blank(),
+            axis.ticks.y=element_blank(),
+            panel.grid=element_blank(),
+            axis.line=element_blank(),
+            panel.background = element_blank())
+    }
+  require(gridExtra)
+  grid.arrange(p2, p1, ncol = 1, heights = c(1, 4))
+  stats[nrow(stats)+1,] <- c(colnames(df2[i]),
+                             coef(lm.loop),
+                             summary(lm.loop)$coefficients[2,4],
+                             summary(lm.loop)$r.squared)
+  vars[nrow(vars)+1,] <- c(colnames(df2)[i],
+                           paste(min(as.numeric(na.omit(df2[,i]))),
+                                 "-",max(as.numeric(na.omit(df2[,i])))),
+                           nrow(df2[i]),
+                           paste(median(as.numeric(na.omit(df2[,i]))),
+                           "(",summary(as.numeric(na.omit(df2[,i])))[2],
+                           "-",summary(as.numeric(na.omit(df2[,i])))[5],")")) #stats
+}
+```
+
+```{r acid precip etc, echo=FALSE, results='asis', message=FALSE, warning=FALSE, fig.show="hold", out.width="50%"}
+#acid deposition
+lm.acid.all <- lm(res~acid,data=acid)
+p1 <- ggplot(data=acid, aes(x=acid,y=res))+
+  geom_point()+
+  geom_smooth(method='lm')+ 
+  labs(x="Acid deposition",
+       y='residuals of LM(logCHLA~logTP)') #plot
+p2 <- ggplot(data=acid, aes(x=acid))+
+  geom_density(fill="grey")+
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        panel.grid=element_blank(),
+        axis.line=element_blank(),
+        panel.background = element_blank())
+require(gridExtra)
+grid.arrange(p2, p1, ncol = 1, heights = c(1, 5))
+stats[nrow(stats)+1,] <- c("ACID DEPOSITION",
+                           coef(lm.acid.all),
+                           summary(lm.acid.all)$coefficients[2,4],
+                           summary(lm.acid.all)$r.squared) #coefficients
+vars[nrow(vars)+1,] <- c("ACID DEPOSITION",
+                           paste(min(as.numeric(na.omit(acid$acid))),
+                                 "-",max(as.numeric(na.omit(acid$acid)))),
+                           nrow(acid),
+                           paste(median(as.numeric(na.omit(acid$acid))),
+                           "(",summary(as.numeric(na.omit(acid$acid)))[2],
+                           "-",summary(as.numeric(na.omit(acid$acid)))[5],")"))
+
+# lm.acid.a <- lm(res~acid, data=acid.a)
+# p1 <- ggplot(data=acid.a, aes(x=acid,y=res))+
+#   geom_point()+
+#   geom_smooth(method='lm')+ 
+#   # scale_x_continuous(limits=c(min(acid$acid),max(acid$acid))) + 
+#   # geom_rug(col=rgb(0,0,0,alpha=.2),sides = "b")+
+#   labs(x="ACID DEPOSITION (DIN:TP>1.5)",
+#        y='residuals of LM(logCHLA~logTP)') #plot
+# p2 <- ggplot(data=acid.a, aes(x=acid))+
+#   geom_density(fill="grey")+
+#   theme(axis.title.x=element_blank(),
+#         axis.text.x=element_blank(),
+#         axis.ticks.x=element_blank(),
+#         axis.title.y=element_blank(),
+#         axis.text.y=element_blank(),
+#         axis.ticks.y=element_blank(),
+#         panel.grid=element_blank(),
+#         axis.line=element_blank(),
+#         panel.background = element_blank())
+# require(gridExtra)
+# grid.arrange(p2, p1, ncol = 1, heights = c(1, 5))
+# stats[nrow(stats)+1,] <- c("ACID DEPOSITION (DIN:TP>1.5)",
+#                            coef(lm.acid.a),
+#                            summary(lm.acid.a)$coefficients[2,4],
+#                            summary(lm.acid.a)$r.squared) #coefficients
+# vars[nrow(vars)+1,] <- c("ACID DEPOSITION (DIN:TP>1.5)",
+#                            paste(min(as.numeric(na.omit(acid.a$acid))),
+#                                  "-",max(as.numeric(na.omit(acid.a$acid)))),
+#                            nrow(acid.a),
+#                            paste(median(as.numeric(na.omit(acid.a$acid))),
+#                            "(",summary(as.numeric(na.omit(acid.a$acid)))[2],
+#                            "-",summary(as.numeric(na.omit(acid.a$acid)))[5],")"))
+# 
+# lm.acid.b <- lm(res~acid, data=acid.b)
+# p1 <- ggplot(data=acid.b, aes(x=acid,y=res))+
+#   geom_point()+
+#   geom_smooth(method='lm')+ 
+#   # scale_x_continuous(limits=c(min(acid$acid),max(acid$acid))) + 
+#   # geom_rug(col=rgb(0,0,0,alpha=.2),sides = "b")+
+#   labs(x="ACID DEPOSITION (DIN:TP<1.5)",
+#        y='residuals of LM(logCHLA~logTP)') #plot
+# p2 <- ggplot(data=acid.b, aes(x=acid))+
+#   geom_density(fill="grey")+
+#   theme(axis.title.x=element_blank(),
+#         axis.text.x=element_blank(),
+#         axis.ticks.x=element_blank(),
+#         axis.title.y=element_blank(),
+#         axis.text.y=element_blank(),
+#         axis.ticks.y=element_blank(),
+#         panel.grid=element_blank(),
+#         axis.line=element_blank(),
+#         panel.background = element_blank())
+# require(gridExtra)
+# grid.arrange(p2, p1, ncol = 1, heights = c(1, 5))
+# stats[nrow(stats)+1,] <- c("ACID DEPOSITION (DIN:TP<1.5)",
+#                            coef(lm.acid.b),
+#                            summary(lm.acid.b)$coefficients[2,4],
+#                            summary(lm.acid.b)$r.squared) #coefficients
+# vars[nrow(vars)+1,] <- c("ACID DEPOSITION (DIN:TP<1.5)",
+#                            paste(min(as.numeric(na.omit(acid.b$acid))),
+#                                  "-",max(as.numeric(na.omit(acid.b$acid)))),
+#                            nrow(acid.b),
+#                            paste(median(as.numeric(na.omit(acid.b$acid))),
+#                            "(",summary(as.numeric(na.omit(acid.b$acid)))[2],
+#                            "-",summary(as.numeric(na.omit(acid.b$acid)))[5],")"))
+
+#precipitation
+lm.rain <- lm(res.lm ~ precip,merge)
+p1 <- ggplot(data=merge, aes(x=precip,y=NULL))+
+  geom_point(aes(x=precip,y=res.lm))+
+  geom_smooth(method='lm',aes(x=precip,y=res.lm))+ 
+  # scale_x_continuous(limits=c(min(merge$precip),max(merge$precip))) + 
+  # geom_rug(col=rgb(0,0,0,alpha=.2),sides = "b")+
+  labs(x="Precipitation",
+       y='residuals of LM(logCHLA~logTP)')
+p2 <- ggplot(data=merge, aes(x=precip))+
+  geom_density(fill="grey")+
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        panel.grid=element_blank(),
+        axis.line=element_blank(),
+        panel.background = element_blank()
+        )
+require(gridExtra)
+grid.arrange(p2, p1, ncol = 1, heights = c(1, 5))
+stats[nrow(stats)+1,] <- c("PRECIPITATION",
+                           coef(lm.rain),
+                           summary(lm.rain)$coefficients[2,4],
+                           summary(lm.rain)$r.squared) #coefficients
+vars[nrow(vars)+1,] <- c("PRECIPITATION",
+                           paste(min(as.numeric(na.omit(merge$precip))),
+                                 "-",max(as.numeric(na.omit(merge$precip)))),
+                           nrow(merge),
+                           paste(median(as.numeric(na.omit(merge$precip))),
+                           "(",summary(as.numeric(na.omit(merge$precip)))[2],
+                           "-",summary(as.numeric(na.omit(merge$precip)))[5],")"))
+
+# #nitrate/nitrite
+# lm.below <- lm(res.lm ~ `NITROGEN, NITRATE-NITRITE_OW_T`,sub.below)
+# p1 <- ggplot(data=sub.below,aes(x=`NITROGEN, NITRATE-NITRITE_OW_T`,y=res.lm)) +
+#   geom_point() +
+#   geom_smooth(method="lm") +
+#   labs(x="NITRATE+NITRITE (DIN:TP<1.5)",
+#        y='residuals of LM(logCHLA~logTP)')
+# p2 <- ggplot(data=sub.below, aes(x=`NITROGEN, NITRATE-NITRITE_OW_T`))+
+#   geom_density(fill="grey")+
+#   theme(axis.title.x=element_blank(),
+#         axis.text.x=element_blank(),
+#         axis.ticks.x=element_blank(),
+#         axis.title.y=element_blank(),
+#         axis.text.y=element_blank(),
+#         axis.ticks.y=element_blank(),
+#         panel.grid=element_blank(),
+#         axis.line=element_blank(),
+#         panel.background = element_blank()
+#         )
+# require(gridExtra)
+# grid.arrange(p2, p1, ncol = 1, heights = c(1, 5))
+# stats[nrow(stats)+1,] <- c("NITRATE+NITRITE (DIN:TP<1.5)",
+#                            coef(lm.below),
+#                            summary(lm.below)$coefficients[2,4],
+#                            summary(lm.below)$r.squared) #coefficients
+# vars[nrow(vars)+1,] <- c("NITRATE+NITRITE (DIN:TP<1.5)",
+#                            paste(min(as.numeric(na.omit(sub.below$`NITROGEN, NITRATE-NITRITE_OW_T`))),
+#                                  "-",max(as.numeric(na.omit(
+#                                    sub.below$`NITROGEN, NITRATE-NITRITE_OW_T`)))),
+#                            nrow(sub.below),
+#                            paste(median(as.numeric(na.omit(sub.below$`NITROGEN, NITRATE-NITRITE_OW_T`))),
+#                            "(",summary(as.numeric(na.omit(
+#                              sub.below$`NITROGEN, NITRATE-NITRITE_OW_T`)))[2],
+#                            "-",summary(as.numeric(na.omit(
+#                              sub.below$`NITROGEN, NITRATE-NITRITE_OW_T`)))[5],")"))
+# 
+# lm.above <- lm(res.lm ~ `NITROGEN, NITRATE-NITRITE_OW_T`,sub.above)
+# p1 <- ggplot(data=sub.above,aes(x=`NITROGEN, NITRATE-NITRITE_OW_T`,y=res.lm)) +
+#   geom_point() +
+#   geom_smooth(method="lm") +
+#   labs(x="NITRATE+NITRITE (DIN:TP>1.5)",
+#        y='residuals of LM(logCHLA~logTP)')
+# p2 <- ggplot(data=sub.above, aes(x=`NITROGEN, NITRATE-NITRITE_OW_T`))+
+#   geom_density(fill="grey")+
+#   theme(axis.title.x=element_blank(),
+#         axis.text.x=element_blank(),
+#         axis.ticks.x=element_blank(),
+#         axis.title.y=element_blank(),
+#         axis.text.y=element_blank(),
+#         axis.ticks.y=element_blank(),
+#         panel.grid=element_blank(),
+#         axis.line=element_blank(),
+#         panel.background = element_blank()
+#         )
+# require(gridExtra)
+# grid.arrange(p2, p1, ncol = 1, heights = c(1, 5))
+# stats[nrow(stats)+1,] <- c("NITRATE+NITRITE (DIN:TP>1.5)",
+#                            coef(lm.above),
+#                            summary(lm.above)$coefficients[2,4],
+#                            summary(lm.above)$r.squared) #coefficients
+# vars[nrow(vars)+1,] <- c("NITRATE+NITRITE (DIN:TP>1.5)",
+#                            paste(min(as.numeric(na.omit(sub.above$`NITROGEN, NITRATE-NITRITE_OW_T`))),
+#                                  "-",max(as.numeric(na.omit(
+#                                    sub.above$`NITROGEN, NITRATE-NITRITE_OW_T`)))),
+#                            nrow(sub.above),
+#                            paste(median(as.numeric(na.omit(sub.above$`NITROGEN, NITRATE-NITRITE_OW_T`))),
+#                            "(",summary(as.numeric(na.omit(
+#                              sub.above$`NITROGEN, NITRATE-NITRITE_OW_T`)))[2],
+#                            "-",summary(as.numeric(na.omit(
+#                              sub.above$`NITROGEN, NITRATE-NITRITE_OW_T`)))[5],")"))
+
+#color (high/low)
+a<-df2[df2$`True color`<=20,]
+b<-df2[df2$`True color`>20,]
+b$`True color` <- log(as.numeric(b$`True color`))
+
+p1 <- ggplot(data=a, aes(x=`True color`,y=res.lm))+
+  geom_point()+
+  geom_smooth(method='lm')+
+  labs(x="Low color",
+       y='residuals of LM(logCHLA~logTP)') #plot
+p2 <- ggplot(data=a, aes(x=`True color`)) +
+  geom_density(fill="grey") +
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        panel.grid=element_blank(),
+        axis.line=element_blank(),
+        panel.background = element_blank())
+require(gridExtra)
+grid.arrange(p2, p1, ncol = 1, heights = c(1, 4))
+
+p1 <- ggplot(data=b, aes(x=`True color`,y=res.lm))+
+  geom_point()+
+  geom_smooth(method='lm')+
+  labs(x="Log(high color)",
+       y='residuals of LM(logCHLA~logTP)') #plot
+p2 <- ggplot(data=b, aes(x=`True color`)) +
+  geom_density(fill="grey") +
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        panel.grid=element_blank(),
+        axis.line=element_blank(),
+        panel.background = element_blank())
+require(gridExtra)
+grid.arrange(p2, p1, ncol = 1, heights = c(1, 4))
+
+alm <- lm(res.lm~`True color`,a)
+blm <- lm(res.lm~`True color`,b)
+stats[nrow(stats)+1,] <- c("COLOR (LOW)",
+                           coef(alm),
+                           summary(alm)$coefficients[2,4],
+                           summary(alm)$r.squared) #coefficients
+vars[nrow(vars)+1,] <- c("COLOR (LOW)",
+                           paste(min(as.numeric(na.omit(a$`TRUE COLOR_OW_T`))),
+                                 "-",max(as.numeric(na.omit(
+                                   a$`TRUE COLOR_OW_T`)))),
+                           nrow(a),
+                           paste(median(as.numeric(na.omit(a$`TRUE COLOR_OW_T`))),
+                           "(",summary(as.numeric(na.omit(a$`TRUE COLOR_OW_T`)))[2],
+                           "-",summary(as.numeric(na.omit(a$`TRUE COLOR_OW_T`)))[5],")"))
+stats[nrow(stats)+1,] <- c("COLOR (HIGH)",
+                           coef(blm),
+                           summary(blm)$coefficients[2,4],
+                           summary(blm)$r.squared) #coefficients
+vars[nrow(vars)+1,] <- c("COLOR (HIGH)",
+                           paste(min(as.numeric(na.omit(b$`TRUE COLOR_OW_T`))),
+                                 "-",max(as.numeric(na.omit(
+                                   b$`TRUE COLOR_OW_T`)))),
+                           nrow(b),
+                           paste(median(as.numeric(na.omit(b$`TRUE COLOR_OW_T`))),
+                           "(",summary(as.numeric(na.omit(b$`TRUE COLOR_OW_T`)))[2],
+                           "-",summary(as.numeric(na.omit(b$`TRUE COLOR_OW_T`)))[5],")"))
+```
+
+### Model statistics
+
+Variable descriptive statistics
+```{r vars, echo=FALSE, results='asis', message=FALSE, warning=FALSE}
+library(huxtable)
+vars_hux <- as_hux(vars)
+theme_plain(vars_hux)
+```
+
+Coefficients for linear models of residuals along gradient of variables. Bold values indicate significant p-values (<0.05). Sorted by rsquared.
+
+```{r stats2, echo=FALSE, results='asis', message=FALSE, warning=FALSE}
+stats <- stats %>%
+  arrange(desc(as.numeric(rsquared)))
+stats_hux <- as_hux(stats)
+stats_hux <- map_bold(stats_hux, everywhere, "p.value",
+      by_ranges(0.05, c(TRUE, FALSE)))
+theme_plain(stats_hux)
+detach(package:huxtable, unload=TRUE) #to prevent confusion
+```
+
+### Most recent year
+
+```{r stats setup2, echo=FALSE, results='asis', message=FALSE, warning=FALSE}
+stats <- data.frame(characteristic=character(),
+                    intercept=double(),
+                    slope=double(),
+                    "p-value"=double(),
+                    rsquared=double()) #blank stat table
+vars <- data.frame(characteristic=character(),
+                   years=character(),
+                   range=character(),
+                   n=double(),
+                   "median (IQR)"=character())
+```
+
+```{r plots, echo=FALSE, results='asis', message=FALSE, warning=FALSE, fig.show="hold", out.width="50%"}
+#loop for secchi, N:P, temperature, nitrogen, color
+cols <- c(9,10,11,15,16)
+for(i in cols){
+  recent <- data.frame(LAKE_ID=as.character(),
+                     year=as.numeric(),
+                     result=as.numeric(),
+                     resid=as.numeric())
+  for(j in 1:length(LAKE_IDS)){
+    loop <- df2 %>%
+      select(LAKE_ID,year,matches(paste(names(df2)[i])),res.lm) %>%
+      filter(LAKE_ID==LAKE_IDS[j]) %>%
+      arrange(desc(year)) 
+    y <- as.numeric(loop[1,2])
+    loop <- loop[loop$year==y,]
+    recent[(nrow(recent)+1):(nrow(recent)+nrow(loop)),] <- loop[1:nrow(loop),]
+  }
+  lm.rec <- lm(resid~result,data=recent)
+  p1 <- ggplot(data=recent,aes(x=result,y=resid))+
+    geom_point(aes(colour=year))+
+    geom_smooth(method="lm") +
+    labs(x=paste(names(df2)[i]),
+         y='residuals of LM(logCHLA~logTP)')+
+  theme(legend.justification=c(1,1),legend.position=c(1,1))
+  p2 <- ggplot(data=recent, aes(x=result)) +
+    geom_density(fill="grey") +
+    theme(axis.title.x=element_blank(),
+          axis.text.x=element_blank(),
+          axis.ticks.x=element_blank(),
+          axis.title.y=element_blank(),
+          axis.text.y=element_blank(),
+          axis.ticks.y=element_blank(),
+          panel.grid=element_blank(),
+          axis.line=element_blank(),
+          panel.background = element_blank())
+  require(gridExtra)
+  grid.arrange(p2, p1, ncol = 1, heights = c(1, 4))
+  stats[nrow(stats)+1,] <- c(paste(names(df2)[i]),
+                             coef(lm.rec),
+                             summary(lm.rec)$coefficients[2,4],
+                             summary(lm.rec)$r.squared) #coefficients 
+  vars[nrow(vars)+1,] <- c(paste(names(df2)[i]),
+                           paste(min(as.numeric(na.omit(recent$year))),
+                                 "-",max(as.numeric(na.omit(recent$year)))),
+                           paste(min(as.numeric(na.omit(recent$result))),
+                                 "-",max(as.numeric(na.omit(recent$result)))),
+                           nrow(recent),
+                           paste(median(as.numeric(na.omit(recent$result))),
+                                 "(",summary(as.numeric(na.omit(recent$result)))[2],
+                                 "-",summary(as.numeric(na.omit(recent$result)))[5],")")
+                           ) #stats 
+}
+
+
+
+#depth
+recent <- data.frame(LAKE_ID=as.character(),
+                     year=as.numeric(),
+                     depth=as.numeric(),
+                     res=as.numeric())
+depth<-df2 %>%
+  select(LAKE_ID,year,`CHLOROPHYLL A_OW_T`,PHOSPHORUS_OW_T,`DEPTH, BOTTOM_OW_NA`)
+for(i in 1:length(LAKE_IDS)){
+  loop <- df2 %>%
+    select(LAKE_ID,year,`DEPTH, BOTTOM_OW_NA`,res.lm) %>%
+    filter(LAKE_ID==LAKE_IDS[i]) %>%
+    arrange(desc(year)) 
+  y <- as.numeric(loop[1,2])
+  d <- median(loop$`DEPTH, BOTTOM_OW_NA`,na.rm=TRUE)
+  if(length(d)>0&!is.nan(d)){
+    loop$`DEPTH, BOTTOM_OW_NA` <- d
+    loop <- loop[loop$year==y,]
+    recent[(nrow(recent)+1):(nrow(recent)+nrow(loop)),] <- loop[1:nrow(loop),]
+    }else{}
+}
+lm.dep <- lm(res~depth,data=recent)
+p1 <- ggplot(data=recent,aes(x=depth,y=res))+
+  geom_point(aes(colour=year))+
+  geom_smooth(method="lm") +
+  labs(x='LAKE DEPTH',
+       y='residuals of LM(logCHLA~logTP)')+
+  theme(legend.justification=c(1,1),legend.position=c(1,1))
+p2 <- ggplot(data=recent, aes(x=depth)) +
+  geom_density(fill="grey") +
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        panel.grid=element_blank(),
+        axis.line=element_blank(),
+        panel.background = element_blank())
+require(gridExtra)
+grid.arrange(p2, p1, ncol = 1, heights = c(1, 4))
+stats[nrow(stats)+1,] <- c("LAKE DEPTH",
+                           coef(lm.dep),
+                           summary(lm.dep)$coefficients[2,4],
+                           summary(lm.dep)$r.squared) #coefficients
+vars[nrow(vars)+1,] <- c("LAKE DEPTH",
+                           paste(min(as.numeric(na.omit(recent$year))),
+                                 "-",max(as.numeric(na.omit(recent$year)))),
+                           paste(min(as.numeric(na.omit(recent$depth))),
+                                 "-",max(as.numeric(na.omit(recent$depth)))),
+                           nrow(recent),
+                           median(as.numeric(na.omit(recent$result))),
+                                 "(",summary(as.numeric(na.omit(recent$depth)))[2],
+                                 "-",summary(as.numeric(na.omit(recent$depth)))[5],")") #stats
+
+#acid
+recent <- data.frame(LAKE_ID=as.character(),
+                     year=as.numeric(),
+                     acid=as.numeric(),
+                     res=as.numeric())
+for(i in 1:length(LAKE_IDS)){
+  loop <- acid.a %>%
+    select(LAKE_ID,year,acid,res) %>%
+    filter(LAKE_ID==LAKE_IDS[i]) %>%
+    arrange(desc(year)) 
+  y <- as.numeric(loop[1,2])
+  loop <- loop[loop$year==y,]
+  recent[(nrow(recent)+1):(nrow(recent)+nrow(loop)),] <- loop[1:nrow(loop),]
+}
+lm.acid.a <- lm(res~acid, data=recent)
+p1 <- ggplot(data=recent, aes(x=acid,y=res))+
+  geom_point(aes(colour=year))+
+  geom_smooth(method='lm')+ 
+  labs(x="ACID DEPOSITION (DIN:TP>1.5)",
+       y='residuals of LM(logCHLA~logTP)')+
+  theme(legend.justification=c(1,1),legend.position=c(1,1))
+p2 <- ggplot(data=recent, aes(x=acid))+
+  geom_density(fill="grey")+
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        panel.grid=element_blank(),
+        axis.line=element_blank(),
+        panel.background = element_blank())
+require(gridExtra)
+grid.arrange(p2, p1, ncol = 1, heights = c(1, 5))
+stats[nrow(stats)+1,] <- c("ACID DEPOSITION (DIN:TP>1.5)",
+                           coef(lm.acid.a),
+                           summary(lm.acid.a)$coefficients[2,4],
+                           summary(lm.acid.a)$r.squared) #coefficients
+vars[nrow(vars)+1,] <- c("ACID DEPOSITION (DIN:TP>1.5)",
+                           paste(min(as.numeric(na.omit(recent$year))),
+                                 "-",max(as.numeric(na.omit(recent$year)))),
+                           paste(min(as.numeric(na.omit(recent$acid))),
+                                 "-",max(as.numeric(na.omit(recent$acid)))),
+                           nrow(recent),
+                           median(as.numeric(na.omit(recent$result))),
+                                 "(",summary(as.numeric(na.omit(recent$acid)))[2],
+                                 "-",summary(as.numeric(na.omit(recent$acid)))[5],")")#stats
+
+recent <- data.frame(LAKE_ID=as.character(),
+                     year=as.numeric(),
+                     acid=as.numeric(),
+                     res=as.numeric())
+for(i in 1:length(LAKE_IDS)){
+  loop <- acid.b %>%
+    select(LAKE_ID,year,acid,res) %>%
+    filter(LAKE_ID==LAKE_IDS[i]) %>%
+    arrange(desc(year)) 
+  y <- as.numeric(loop[1,2])
+  loop <- loop[loop$year==y,]
+  recent[(nrow(recent)+1):(nrow(recent)+nrow(loop)),] <- loop[1:nrow(loop),]
+}
+lm.acid.b <- lm(res~acid, data=recent)
+p1 <- ggplot(data=recent, aes(x=acid,y=res))+
+  geom_point(aes(colour=year))+
+  geom_smooth(method='lm')+ 
+  labs(x="ACID DEPOSITION (DIN:TP<1.5)",
+       y='residuals of LM(logCHLA~logTP)')+
+  theme(legend.justification=c(1,1),legend.position=c(1,1))
+p2 <- ggplot(data=recent, aes(x=acid))+
+  geom_density(fill="grey")+
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        panel.grid=element_blank(),
+        axis.line=element_blank(),
+        panel.background = element_blank())
+require(gridExtra)
+grid.arrange(p2, p1, ncol = 1, heights = c(1, 5))
+stats[nrow(stats)+1,] <- c("ACID DEPOSITION (DIN:TP<1.5)",
+                           coef(lm.acid.a),
+                           summary(lm.acid.a)$coefficients[2,4],
+                           summary(lm.acid.a)$r.squared) #coefficients
+vars[nrow(vars)+1,] <- c("ACID DEPOISITION (DIN:TP<1.5)",
+                           paste(min(as.numeric(na.omit(recent$year))),
+                                 "-",max(as.numeric(na.omit(recent$year)))),
+                           paste(min(as.numeric(na.omit(recent$acid))),
+                                 "-",max(as.numeric(na.omit(recent$acid)))),
+                           nrow(recent),
+                           median(as.numeric(na.omit(recent$result))),
+                                 "(",summary(as.numeric(na.omit(recent$acid)))[2],
+                                 "-",summary(as.numeric(na.omit(recent$acid)))[5],")") #stats
+
+
+#precipitation
+recent <- data.frame(LAKE_ID=as.character(),
+                     year=as.numeric(),
+                     precip=as.numeric(),
+                     res=as.numeric())
+for(i in 1:length(LAKE_IDS)){
+  loop <- merge %>%
+    select(LAKE_ID,year,precip,res.lm) %>%
+    filter(LAKE_ID==LAKE_IDS[i]) %>%
+    arrange(desc(year)) 
+  y <- as.numeric(loop[1,2])
+  loop <- loop[loop$year==y,]
+  recent[(nrow(recent)+1):(nrow(recent)+nrow(loop)),] <- loop[1:nrow(loop),]
+}
+lm.rain <- lm(res ~ precip,recent)
+p1 <- ggplot(data=recent, aes(x=precip,y=res))+
+  geom_point(aes(colour=year))+
+  geom_smooth(method='lm')+ 
+  labs(x="PRECIPITATION",
+       y='residuals of LM(logCHLA~logTP)')+
+  theme(legend.justification=c(1,1),legend.position=c(1,1))
+p2 <- ggplot(data=recent, aes(x=precip))+
+  geom_density(fill="grey")+
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        panel.grid=element_blank(),
+        axis.line=element_blank(),
+        panel.background = element_blank()
+        )
+require(gridExtra)
+grid.arrange(p2, p1, ncol = 1, heights = c(1, 5))
+stats[nrow(stats)+1,] <- c("PRECIPITATION",
+                           coef(lm.rain),
+                           summary(lm.rain)$coefficients[2,4],
+                           summary(lm.rain)$r.squared) #coefficients
+vars[nrow(vars)+1,] <- c("PRECIPITATION",
+                           paste(min(as.numeric(na.omit(recent$year))),
+                                 "-",max(as.numeric(na.omit(recent$year)))),
+                           paste(min(as.numeric(na.omit(recent$precip))),
+                                 "-",max(as.numeric(na.omit(recent$precip)))),
+                           nrow(recent),
+                           median(as.numeric(na.omit(recent$result))),
+                                 "(",summary(as.numeric(na.omit(recent$acid)))[2],
+                                 "-",summary(as.numeric(na.omit(recent$acid)))[5],")")#stats
+
+#nitrate/nitrite
+recent <- data.frame(LAKE_ID=as.character(),
+                     year=as.numeric(),
+                     TN=as.numeric(),
+                     res=as.numeric())
+for(i in 1:length(LAKE_IDS)){
+  loop <- sub.below %>%
+    select(LAKE_ID,year,`NITROGEN, NITRATE-NITRITE_OW_T`,res.lm) %>%
+    filter(LAKE_ID==LAKE_IDS[i]) %>%
+    arrange(desc(year)) 
+  y <- as.numeric(loop[1,2])
+  loop <- loop[loop$year==y,]
+  recent[(nrow(recent)+1):(nrow(recent)+nrow(loop)),] <- loop[1:nrow(loop),]
+}
+lm.below <- lm(res ~ TN,recent)
+p1 <- ggplot(data=recent,aes(x=TN,y=res)) +
+  geom_point(aes(colour=year)) +
+  geom_smooth(method="lm") +
+  labs(x="NITRATE+NITRITE (DIN:TP<1.5)",
+       y='residuals of LM(logCHLA~logTP)')+
+  theme(legend.justification=c(1,1),legend.position=c(1,1))
+p2 <- ggplot(data=recent, aes(x=TN))+
+  geom_density(fill="grey")+
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        panel.grid=element_blank(),
+        axis.line=element_blank(),
+        panel.background = element_blank()
+        )
+require(gridExtra)
+grid.arrange(p2, p1, ncol = 1, heights = c(1, 5))
+stats[nrow(stats)+1,] <- c("NITRATE+NITRITE (DIN:TP<1.5)",
+                           coef(lm.below),
+                           summary(lm.below)$coefficients[2,4],
+                           summary(lm.below)$r.squared) #coefficients
+vars[nrow(vars)+1,] <- c("NITRATE+NITRITE (DIN:TP<1.5)",
+                           paste(min(as.numeric(na.omit(recent$year))),
+                                 "-",max(as.numeric(na.omit(recent$year)))),
+                           paste(min(as.numeric(na.omit(recent$TN))),
+                                 "-",max(as.numeric(na.omit(recent$TN)))),
+                           nrow(recent),
+                           median(as.numeric(na.omit(recent$result))),
+                                 "(",summary(as.numeric(na.omit(recent$TN)))[2],
+                                 "-",summary(as.numeric(na.omit(recent$TN)))[5],")")#stats
+
+recent <- data.frame(LAKE_ID=as.character(),
+                     year=as.numeric(),
+                     TN=as.numeric(),
+                     res=as.numeric())
+for(i in 1:length(LAKE_IDS)){
+  loop <- sub.above %>%
+    select(LAKE_ID,year,`NITROGEN, NITRATE-NITRITE_OW_T`,res.lm) %>%
+    filter(LAKE_ID==LAKE_IDS[i]) %>%
+    arrange(desc(year)) 
+  y <- as.numeric(loop[1,2])
+  loop <- loop[loop$year==y,]
+  recent[(nrow(recent)+1):(nrow(recent)+nrow(loop)),] <- loop[1:nrow(loop),]
+}
+lm.above <- lm(res ~ TN,recent)
+p1 <- ggplot(data=recent,aes(x=TN,y=res)) +
+  geom_point(aes(colour=year)) +
+  geom_smooth(method="lm") +
+  labs(x="NITRATE+NITRITE (DIN:TP>1.5)",
+       y='residuals of LM(logCHLA~logTP)') +
+  theme(legend.justification=c(1,1),legend.position=c(1,1))
+p2 <- ggplot(data=recent, aes(x=TN))+
+  geom_density(fill="grey")+
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        panel.grid=element_blank(),
+        axis.line=element_blank(),
+        panel.background = element_blank()
+        )
+require(gridExtra)
+grid.arrange(p2, p1, ncol = 1, heights = c(1, 5))
+stats[nrow(stats)+1,] <- c("NITRATE+NITRITE (DIN:TP>1.5)",
+                           coef(lm.above),
+                           summary(lm.above)$coefficients[2,4],
+                           summary(lm.above)$r.squared) #coefficients
+vars[nrow(vars)+1,] <- c("NITRATE+NITRITE (DIN:TP>1.5)",
+                           paste(min(as.numeric(na.omit(recent$year))),
+                                 "-",max(as.numeric(na.omit(recent$year)))),
+                           paste(min(as.numeric(na.omit(recent$TN))),
+                                 "-",max(as.numeric(na.omit(recent$TN)))),
+                           nrow(recent),
+                           median(as.numeric(na.omit(recent$result))),
+                                 "(",summary(as.numeric(na.omit(recent$TN)))[2],
+                                 "-",summary(as.numeric(na.omit(recent$TN)))[5],")")#stats
+
+```
+
+### Recent year statistics
+
+Variable descriptive statistics
+```{r table, echo=FALSE, results='asis', message=FALSE, warning=FALSE}
+
+library(huxtable)
+vars_hux <- as_hux(vars)
+theme_plain(vars_hux)
+```
+
+
+
+Coefficients for linear models of residuals along gradient of variables in most recent year. Bold values indicate significant p-values (<0.05). Sorted by rsquared.
+```{r, echo=FALSE, results='asis', message=FALSE, warning=FALSE}
+stats <- stats %>%
+  arrange(desc(as.numeric(rsquared)))
+stats_hux <- as_hux(stats)
+stats_hux <- map_bold(stats_hux, everywhere, "p.value",
+      by_ranges(0.05, c(TRUE, FALSE)))
+theme_plain(stats_hux)
+detach(package:huxtable, unload=TRUE) #to prevent confusion
+```
+
+### Color bins
+
+High vs low color, sample date
+```{r color bins, echo=FALSE, results='asis', message=FALSE, warning=FALSE, fig.show="hold", out.width="50%"}
+# variable residuals
+stats <- data.frame(characteristic=character(),
+                    intercept=double(),
+                    slope=double(),
+                    "p-value"=double(),
+                    rsquared=double()) #blank stat table
+
+high.col <- df2[df2$`TRUE COLOR_OW_T`>20,]
+low.col <- df2[df2$`TRUE COLOR_OW_T`<=20,]
+print(paste("HIGH COLOR, N=",nrow(high.col)))
+print(paste("LOW COLOR, N=",nrow(low.col)))
+
+lm.high <- lm(res.lm ~ SAMPLE_DATE, data=high.col) #linear model of residuals against variable
+p1 <- ggplot(high.col,aes(x=SAMPLE_DATE,y=res.lm))+
+  geom_point()+
+  geom_smooth(method='lm')+ 
+  labs(x="SAMPLE_DATE (HIGH COLOR)",
+       y='residuals of LM(logCHLA~logTP)') +
+  scale_x_date(date_labels="%Y")
+p2 <- ggplot(data=high.col, aes(x=SAMPLE_DATE)) +
+  geom_density(fill="grey") +
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        panel.grid=element_blank(),
+        axis.line=element_blank(),
+        panel.background = element_blank())
+require(gridExtra)
+grid.arrange(p2, p1, ncol = 1, heights = c(1, 4))
+stats[nrow(stats)+1,] <- c("High color",
+                           coef(lm.high),
+                           summary(lm.high)$coefficients[2,4],
+                           summary(lm.high)$r.squared)
+
+lm.low <- lm(res.lm ~ SAMPLE_DATE, data=low.col) #linear model of residuals against variable
+p1 <- ggplot(low.col,aes(x=SAMPLE_DATE,y=res.lm))+
+  geom_point()+
+  geom_smooth(method='lm')+ 
+  labs(x="SAMPLE_DATE (LOW COLOR)",
+       y='residuals of LM(logCHLA~logTP)') +
+  scale_x_date(date_labels="%Y")
+p2 <- ggplot(data=low.col, aes(x=SAMPLE_DATE)) +
+  geom_density(fill="grey") +
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        panel.grid=element_blank(),
+        axis.line=element_blank(),
+        panel.background = element_blank())
+require(gridExtra)
+grid.arrange(p2, p1, ncol = 1, heights = c(1, 4))
+stats[nrow(stats)+1,] <- c("Low color",
+                           coef(lm.low),
+                           summary(lm.low)$coefficients[2,4],
+                           summary(lm.low)$r.squared)
+
+library(huxtable)
+stats_hux <- as_hux(stats)
+stats_hux <- map_bold(stats_hux, everywhere, "p.value",
+      by_ranges(0.05, c(TRUE, FALSE)))
+theme_plain(stats_hux)
+detach(package:huxtable, unload=TRUE)
+```
+
+Color trend, sample date
+```{r color trend, echo=FALSE, results='asis', message=FALSE, warning=FALSE, fig.show="hold", out.width="50%"}
+
+# variable residuals
+stats <- data.frame(characteristic=character(),
+                    intercept=double(),
+                    slope=double(),
+                    "p-value"=double(),
+                    rsquared=double()) #blank stat table
+
+slopes <- read.csv("junk.sabrina.slopes.csv")
+inc <- slopes %>%
+  filter(Color=="positive") %>%
+  select(LAKE_ID)
+inc <- df2 %>%
+  subset(LAKE_ID %in% inc$LAKE_ID) %>%
+  select(LAKE_ID,`TRUE COLOR_OW_T`,res.lm,SAMPLE_DATE)
+dec <- slopes %>%
+  filter(Color != "positive") %>%
+  select(LAKE_ID)
+dec <- df2 %>%
+  subset(LAKE_ID %in% dec$LAKE_ID) %>%
+  select(LAKE_ID,`TRUE COLOR_OW_T`,res.lm,SAMPLE_DATE)
+print(paste("INCREASING COLOR, N=",nrow(inc)))
+print(paste("DECREASING COLOR, N=",nrow(dec)))
+
+
+lm.inc <- lm(res.lm ~ SAMPLE_DATE, data=inc) #linear model of residuals against variable
+p1 <- ggplot(lm.inc,aes(x=SAMPLE_DATE,y=res.lm))+
+  geom_point()+
+  geom_smooth(method='lm')+ 
+  labs(x="SAMPLE_DATE (INCREASING COLOR)",
+       y='residuals of LM(logCHLA~logTP)') +
+  scale_x_date(date_labels="%Y")
+p2 <- ggplot(data=lm.inc, aes(x=SAMPLE_DATE)) +
+  geom_density(fill="grey") +
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        panel.grid=element_blank(),
+        axis.line=element_blank(),
+        panel.background = element_blank())
+require(gridExtra)
+grid.arrange(p2, p1, ncol = 1, heights = c(1, 4))
+stats[nrow(stats)+1,] <- c("Increasing color",
+                           coef(lm.inc),
+                           summary(lm.inc)$coefficients[2,4],
+                           summary(lm.inc)$r.squared)
+
+lm.dec <- lm(res.lm ~ SAMPLE_DATE, data=dec) #linear model of residuals against variable
+p1 <- ggplot(dec,aes(x=SAMPLE_DATE,y=res.lm))+
+  geom_point()+
+  geom_smooth(method='lm')+ 
+  labs(x="SAMPLE_DATE (DECREASING COLOR)",
+       y='residuals of LM(logCHLA~logTP)') +
+  scale_x_date(date_labels="%Y")
+p2 <- ggplot(data=dec, aes(x=SAMPLE_DATE)) +
+  geom_density(fill="grey") +
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        panel.grid=element_blank(),
+        axis.line=element_blank(),
+        panel.background = element_blank())
+require(gridExtra)
+grid.arrange(p2, p1, ncol = 1, heights = c(1, 4))
+stats[nrow(stats)+1,] <- c("Decreasing color",
+                           coef(lm.dec),
+                           summary(lm.dec)$coefficients[2,4],
+                           summary(lm.dec)$r.squared)
+
+
+library(huxtable)
+stats_hux <- as_hux(stats)
+stats_hux <- map_bold(stats_hux, everywhere, "p.value",
+      by_ranges(0.05, c(TRUE, FALSE)))
+theme_plain(stats_hux)
+detach(package:huxtable, unload=TRUE)
+```
+
+
+## Relationship of model residuals to year by lake {.tabset}
+
+Pattern of logCHLA~logTP model residuals along sample date for each lake. Data from each lake are fitted to a linear model on the residuals.
+
+### Residual plots
+
+A red regression line indicates the model is statistically insignificant (p>0.05). A red border medians that the lake had a negative chlorophyll trend and a flat or positive phosphorous trend.
+
+```{r, message=FALSE, warning=FALSE, fig.show="hold", out.width="25%"}
+#each lake
+#loop over each lake
+LAKE_IDS <- unique(df$LAKE_ID) #list lakes
+coeffs <- data.frame(lake=character(),
+                     intercept=double(),
+                     slope=double(),
+                     'p-value'=double(),
+                     rsquared=double()) #blank coefficient table
+
+incongruous <- read.csv("~/OneDrive - New York State Office of Information Technology Services/Rscripts/Trend/chl-tp-lakes.csv")
+incongruous <- incongruous[which(incongruous$CHL_slope!=incongruous$PHOS_slope),]
+incongruous <- incongruous[incongruous$CHL_slope=="neg",]
+
+for (i in 1:length(LAKE_IDS)) {
+  lake <- LAKE_IDS[[i]] #pick a lake
+  dat <- df2[df2$LAKE_ID == lake,] #create new data with that lake
+  resid.loop <- lm(logCHLA~logTP,data=dat) #linear model of chl vs tp
+  dat$res.loop <- resid(resid.loop) #residuals for that lake
+  lm.loop <- lm(res.loop~SAMPLE_DATE,data=dat) #linear model of residuals vs year
+  co <- coef(lm.loop)
+  plot <- ggplot(dat,aes(x=SAMPLE_DATE,y=res.loop))+ #plot lake
+    geom_point() +
+    labs(title=paste(lake),x='year',y='residuals of LM(logCHLA~logTP)')
+  if(summary(lm.loop)$coefficients[,4]<0.05){ #plot significant lakes
+    plot <- plot + geom_smooth(method='lm')
+  }else{
+    plot <- plot + geom_smooth(method='lm',aes(color="red"),show.legend=FALSE)
+  }
+  if(lake %in% incongruous$LAKE_ID){
+    plot <- plot + theme(panel.border = element_rect(colour = "red", fill=NA, size=3))
+  }else{}
+  print(plot) #print
+  coeffs[nrow(coeffs)+1,] <- c(lake,
+                               co,
+                               summary(lm.loop)$coefficients[2,4],
+                               summary(lm.loop)$r.squared)
+}
+
+
+```
+
+### Model statistics
+
+Coefficients for linear models of residuals along gradient of time for each lake. Bold values indicate significant p-values (<0.05). Asterisks (***) indicate that the lake had a negative chlorophyll trend and a flat or positive phosphorous trend.
+
+```{r, echo=FALSE, results='asis', message=FALSE, warning=FALSE}
+
+library(huxtable)
+coeffs_hux <- as_hux(coeffs)
+coeffs_hux <- map_bold(coeffs_hux, everywhere, "p.value",
+      by_ranges(0.05, c(TRUE, FALSE)))
+theme_plain(coeffs_hux)
+detach(package:huxtable, unload=TRUE) #to prevent confusion
+
+```
+
+### Distribution of slopes
+
+Dot plot of slope for each lake. Grey dots are statistically insignificant (p>0.05).
+
+```{r, echo=FALSE, results='asis', message=FALSE, warning=FALSE}
+coeffs$slope <- as.numeric(coeffs$slope)
+coeffs$x <- "lakes"
+coeffs$p.value <- as.numeric(coeffs$p.value)
+coeffs$sig <- "sig"
+for(i in 1:nrow(coeffs)){
+  if(coeffs$p.value[i]<0.05){ #plot significant lakes
+    coeffs[i,7] <- paste("significant")
+  }else{
+    coeffs[i,7] <- paste("insignificant")
+  }
+}
+
+  
+  
+slope.plot <- ggplot(coeffs) +
+  geom_boxplot(width=0.1,aes(x=x,y=slope)) +
+  geom_dotplot(binaxis='y',stackdir='center', dotsize=0.5, show.legend = FALSE,aes(x=x,y=slope,fill=sig,colour=sig)) +
+  scale_fill_grey(limits=c("significant","insignificant"))+
+  scale_colour_grey(limits=c("significant","insignificant"))
+print(slope.plot)
+```
+# Maps
+
+```{r}
+temp1 <- read.csv("junk.sabrina.slopes2.csv") 
+
+temp1 <- temp1 %>% 
+  select(-c("ChlA","P","risiduals"))
+coeffs2 <- coeffs %>%
+  rename(LAKE_ID=lake) %>%
+  rename(CHLTP=slope) %>%
+  select(LAKE_ID,CHLTP,p.value)
+coeffs2$CHLTP <- as.numeric(coeffs2$CHLTP)
+coeffs2$p.value <- as.numeric(coeffs2$p.value)
+
+coeffs2$CHLTP[coeffs2$p.value>0.05]<-0
+
+slopes <- merge(temp1,coeffs2,by="LAKE_ID",all.x=TRUE,all.y=TRUE)
+
+locs <- read.csv("/Users/sabrinaxie/New York State Office of Information Technology Services/BWAM - Lakes Database/Current/new_database/L_LOCATION.csv")
+
+locs <- locs %>%
+  filter(LOCATION_TYPE=="CENTROID") %>%
+  select(LAKE_HISTORY_ID,LOCATION_X_COORDINATE,LOCATION_Y_COORDINATE) %>%
+  rename(LAKE_ID=LAKE_HISTORY_ID)
+
+sites<-merge(slopes,locs,by=c('LAKE_ID'),all.x = TRUE) %>%
+  distinct()
+
+library(ggmap)
+
+ggplot(grid, aes(lon, lat)) +
+  geom_raster(aes(fill = cut(z, zCuts))) 
+
+#color
+nybox<-make_bbox(sites,lon=LOCATION_X_COORDINATE,lat=LOCATION_Y_COORDINATE)
+ny.map <- qmap(nybox,source="osm",color="bw")
+ny.map1<- ny.map +
+  geom_point(data=sites,size=4,
+             aes(x=LOCATION_X_COORDINATE,
+                 y=LOCATION_Y_COORDINATE,
+                 color=Color)) +
+  scale_color_distiller(palette = "RdBu", limits = c(-0.4,0.4))
+print(ny.map1)
+
+#temperature
+ny.map2 <- ny.map +
+  geom_point(data=sites,size=4,
+             aes(x=LOCATION_X_COORDINATE,
+                 y=LOCATION_Y_COORDINATE,
+                 color=Temp)) +
+  scale_color_distiller(palette = "RdBu", limits = c(-0.2,0.2))
+print(ny.map2)
+
+#CHL/TP
+ny.map3 <- ny.map +
+  geom_point(data=sites, size=4,
+             aes(x=LOCATION_X_COORDINATE,
+                 y=LOCATION_Y_COORDINATE,
+                 color=CHLTP)) +
+  scale_color_distiller(palette = "RdBu", limits = c(-0.000125,0.000125))
+print(ny.map3)
+```
