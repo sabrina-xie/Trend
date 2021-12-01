@@ -88,6 +88,40 @@ plot.lm1 <- ggplot(df,aes(x=logTP,y=logCHLA))+
 print(plot.lm1)
 ```
 
+### GAM
+
+``` {r gam, echo=FALSE, message=FALSE, warning=FALSE}
+#GAM
+gam1 <- gam(logCHLA~s(logTP), data=df)
+#gam2 <- gam(logCHLA~s(logTP,k=4), data=df)
+#gam3 <- gam(logCHLA~s(logTP,k=150), data=df)
+gam1.res <- resid(gam1) #residuals
+df$res.gam <- gam1.res
+summary(gam1)
+plot(gam1)
+
+stats <- data.frame(characteristic=character(),
+                    intercept=double(),
+                    slope=double(),
+                    "p-value"=double(),
+                    rsquared=double()) #blank stat table
+cols <- c(2,8,10,14)
+for(i in cols){
+  lm.loop <- lm(res.gam ~ matrix(unlist(df[,i])), data=df)
+  stats[nrow(stats)+1,] <- c(colnames(df[i]),
+                             coef(lm.loop)[1],
+                             coef(lm.loop)[2],
+                             summary(lm.loop)$coefficients[,4],
+                             summary(lm.loop)$r.squared)
+}
+
+library(huxtable)
+stats_hux <- as_hux(stats)
+theme_plain(stats_hux)
+detach(package:huxtable, unload=TRUE)
+
+```
+
 ### Model statistics
 
 ```{r summary}
@@ -261,6 +295,8 @@ for(i in (2:ncol(df3)-1)){
 ```
 
 ```{r acid precip etc, echo=FALSE, results='asis', message=FALSE, warning=FALSE, fig.show="hold", out.width="50%"}
+#everything after here is somewhat poorly written because all the data is a little different, but it basically just follows the form of the loop above
+
 #acid deposition
 lm.acid.all <- lm(res~acid,data=acid)
 p1 <- ggplot(data=acid, aes(x=acid,y=res))+
@@ -328,17 +364,17 @@ vars[nrow(vars)+1,] <- c("PRECIPITATION",
 
 #color (high/low)
 #split
-a<-df2[df2$`True color`<=20,]
-b<-df2[df2$`True color`>20,]
+a<-df2[df2$`TRUE COLOR_OW_T`<=20,]
+b<-df2[df2$`TRUE COLOR_OW_T`>20,]
 #log of high color
-b$`True color` <- log(as.numeric(b$`True color`))
+b$`TRUE COLOR_OW_T` <- log(as.numeric(b$`TRUE COLOR_OW_T`))
 
-p1 <- ggplot(data=a, aes(x=`True color`,y=res.lm))+
+p1 <- ggplot(data=a, aes(x=`TRUE COLOR_OW_T`,y=res.lm))+
   geom_point()+
   geom_smooth(method='lm')+
   labs(x="Low color",
        y='residuals of LM(logCHLA~logTP)') #plot
-p2 <- ggplot(data=a, aes(x=`True color`)) +
+p2 <- ggplot(data=a, aes(x=`TRUE COLOR_OW_T`)) +
   geom_density(fill="grey") +
   theme(axis.title.x=element_blank(),
         axis.text.x=element_blank(),
@@ -352,12 +388,12 @@ p2 <- ggplot(data=a, aes(x=`True color`)) +
 require(gridExtra)
 grid.arrange(p2, p1, ncol = 1, heights = c(1, 4))
 
-p1 <- ggplot(data=b, aes(x=`True color`,y=res.lm))+
+p1 <- ggplot(data=b, aes(x=`TRUE COLOR_OW_T`,y=res.lm))+
   geom_point()+
   geom_smooth(method='lm')+
   labs(x="Log(high color)",
        y='residuals of LM(logCHLA~logTP)') #plot
-p2 <- ggplot(data=b, aes(x=`True color`)) +
+p2 <- ggplot(data=b, aes(x=`TRUE COLOR_OW_T`)) +
   geom_density(fill="grey") +
   theme(axis.title.x=element_blank(),
         axis.text.x=element_blank(),
@@ -371,8 +407,8 @@ p2 <- ggplot(data=b, aes(x=`True color`)) +
 require(gridExtra)
 grid.arrange(p2, p1, ncol = 1, heights = c(1, 4))
 
-alm <- lm(res.lm~`True color`,a)
-blm <- lm(res.lm~`True color`,b)
+alm <- lm(res.lm~`TRUE COLOR_OW_T`,a)
+blm <- lm(res.lm~`TRUE COLOR_OW_T`,b)
 stats[nrow(stats)+1,] <- c("COLOR (LOW)",
                            coef(alm),
                            summary(alm)$coefficients[2,4],
@@ -789,8 +825,6 @@ vars[nrow(vars)+1,] <- c("NITRATE+NITRITE (DIN:TP>1.5)",
 
 ```
 
-### Recent year statistics
-
 Variable descriptive statistics
 ```{r table, echo=FALSE, results='asis', message=FALSE, warning=FALSE}
 
@@ -810,6 +844,7 @@ stats_hux <- map_bold(stats_hux, everywhere, "p.value",
 theme_plain(stats_hux)
 detach(package:huxtable, unload=TRUE) #to prevent confusion
 ```
+
 
 ### Color bins
 
@@ -1054,11 +1089,13 @@ for(i in 1:nrow(coeffs)){
   }
 }
 
-
-
 slope.plot <- ggplot(coeffs) +
   geom_boxplot(width=0.1,aes(x=x,y=slope)) +
-  geom_dotplot(binaxis='y',stackdir='center', dotsize=0.5, show.legend = FALSE,aes(x=x,y=slope,fill=sig,colour=sig)) +
+  geom_dotplot(binaxis='y',s
+               tackdir='center', 
+               dotsize=0.5, 
+               show.legend = FALSE,
+               aes(x=x,y=slope,fill=sig,colour=sig)) +
   scale_fill_grey(limits=c("significant","insignificant"))+
   scale_colour_grey(limits=c("significant","insignificant"))
 print(slope.plot)
