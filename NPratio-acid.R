@@ -46,14 +46,15 @@ df<-df %>%
     is.na(`NITROGEN, KJELDAHL, TOTAL_OW_TOTAL`) ~ `NITROGEN, TOTAL_OW_TOTAL`)) %>% 
   mutate(year=substr(SAMPLE_DATE, start = 1, stop = 4))
 
-acid <- read.csv("junk.sabrina.chl.predictors.csv")
-
-ggplot(acid,aes(x=acid,y=log(NPratio)))+
-  geom_point()
-
-df2<-merge(df,acid,by=c("LAKE_ID","year"),all.x=TRUE) %>% 
-  mutate(`NPratio`=(`NITROGEN, TOTAL`/`PHOSPHORUS, TOTAL_OW_TOTAL`)) %>% 
+acid <- read.csv("junk.sabrina.chl.predictors.csv") %>% 
+  select(LAKE_ID,year,acid) %>% 
+  distinct()
+NP <- read.csv("junk.for.sabrina.csv") %>% 
+  select(LAKE_ID,year,Result.Value) %>% 
   distinct()
 
-ggplot(df2,aes(x=acid,y=log(NPratio)))+
+df <- merge(acid,NP,by=c("LAKE_ID","year")) %>% 
+  rename(logNP = Result.Value)
+
+ggplot(df,aes(x=acid,y=logNP,color=year))+
   geom_point()
