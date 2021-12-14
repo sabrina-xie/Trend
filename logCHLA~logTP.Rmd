@@ -51,7 +51,14 @@ df <- df[!is.na(df$LAKE_ID),]
 
 #read in more data
 library(MASS)
-acid <- read.csv("junk.acid.for.sabrina.csv")
+library(readxl)
+
+acid <- read_xlsx("Trend_Lakes_Total_N_kg_Ha_Transposed.xlsx") 
+acid <- acid %>% 
+  pivot_longer(cols=names(acid)[2:47]) %>% 
+  rename(LAKE_ID=name,
+         year=YEAR,
+         acid=value)
 acid <- merge(acid, df, by.y = c("year","LAKE_ID"), by.x = c("year","LAKE_ID"), all.x = TRUE)
 acid <- na.omit(acid)
 
@@ -208,7 +215,6 @@ hist(resid(lm2))
 ```{r stats, echo=FALSE, results='asis', message=FALSE, warning=FALSE}
 
 #reading in precipitation data
-library(readxl)
 rain <- read_xlsx("~/OneDrive - New York State Office of Information Technology Services/Rscripts/Trend/Trend_Lakes_AVG_Annual_Precip_cm-yr.xlsx")
 rain <- pivot_longer(rain,2:33)
 rain$name <- substr(rain$name,1,4)
@@ -1091,7 +1097,7 @@ for(i in 1:nrow(coeffs)){
 
 slope.plot <- ggplot(coeffs) +
   geom_boxplot(width=0.1,aes(x=x,y=slope)) +
-  geom_dotplot(binaxis='y',s
+  geom_dotplot(binaxis='y',
                tackdir='center', 
                dotsize=0.5, 
                show.legend = FALSE,
@@ -1133,33 +1139,43 @@ sites<-merge(slopes,locs,by=c('LAKE_ID'),all.x = TRUE) %>%
 
 #fetch map
 library(ggmap)
-nybox<-make_bbox(sites,lon=LOCATION_X_COORDINATE,lat=LOCATION_Y_COORDINATE)
-ny.map <- qmap(nybox,source="osm",color="bw")
+library(maps)
 
-#color
-ny.map1<- ny.map +
+states <- map_data("state")
+ny <- subset(states, region %in% c("new york"))
+
+locs.map <- ggplot() + 
+  geom_polygon(data=ny,aes(x = long, y = lat, group = group), color = "white") + 
+  coord_fixed(1.3) +
   geom_point(data=sites,size=4,
              aes(x=LOCATION_X_COORDINATE,
                  y=LOCATION_Y_COORDINATE,
                  color=Color)) +
-  scale_color_distiller(palette = "RdBu", limits = c(-0.4,0.4))
-print(ny.map1)
+  scale_color_distiller(palette = "RdBu", limits = c(-0.4,0.4))  # do this to leave off the color legend
+
+print(locs.map)
 
 #temperature
-ny.map2 <- ny.map +
+locs.map <- ggplot() + 
+  geom_polygon(data=ny,aes(x = long, y = lat, group = group), color = "white") + 
+  coord_fixed(1.3) +
   geom_point(data=sites,size=4,
              aes(x=LOCATION_X_COORDINATE,
                  y=LOCATION_Y_COORDINATE,
                  color=Temp)) +
-  scale_color_distiller(palette = "RdBu", limits = c(-0.2,0.2))
-print(ny.map2)
+  scale_color_distiller(palette = "RdBu", limits = c(-0.4,0.4))  # do this to leave off the color legend
+
+print(locs.map)
 
 #CHL/TP
-ny.map3 <- ny.map +
-  geom_point(data=sites, size=4,
+locs.map <- ggplot() + 
+  geom_polygon(data=ny,aes(x = long, y = lat, group = group), color = "white") + 
+  coord_fixed(1.3) +
+  geom_point(data=sites,size=4,
              aes(x=LOCATION_X_COORDINATE,
                  y=LOCATION_Y_COORDINATE,
                  color=CHLTP)) +
-  scale_color_distiller(palette = "RdBu", limits = c(-0.000125,0.000125))
-print(ny.map3)
+  scale_color_distiller(palette = "RdBu", limits = c(-0.4,0.4))  # do this to leave off the color legend
+
+print(locs.map)
 ```
