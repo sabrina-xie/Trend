@@ -209,6 +209,55 @@ plot(lm2)
 hist(resid(lm2))
 ```
 
+## Change in trend
+```{r change trend, echo=FALSE, results="asis", message=FALSE, warning=FALSE, fig.show="hold", out.width="50%"}
+
+df3 <- df2 %>% 
+  select(LAKE_ID,year,`CHLOROPHYLL A_OW_T`,PHOSPHORUS_OW_T) %>% 
+  arrange(year) %>% 
+  group_by(LAKE_ID)
+
+lakes <- unique(df3$LAKE_ID)
+
+first <- data.frame(
+  LAKE_ID=lakes,
+  year=NA)
+
+last <- data.frame(
+  LAKE_ID=lakes,
+  year=NA)
+  
+for(i in 1:length(lakes)){
+  lake <- lakes[i]
+  loop <- df3 %>% 
+    filter(LAKE_ID==lake)
+  first[first$LAKE_ID==lake,2] <- min(loop$year)
+  last[last$LAKE_ID==lake,2] <- max(loop$year)
+}
+
+first <- merge(first,df3,by=c("LAKE_ID","year"),all.x=TRUE) %>% 
+  mutate(time="first")
+last <- merge(last,df3,by=c("LAKE_ID","year"),all.x=TRUE) %>% 
+  mutate(time="last")
+df3 <- rbind(first,last) %>% 
+  mutate(logCHLA=log(`CHLOROPHYLL A_OW_T`),
+         logTP=log(PHOSPHORUS_OW_T))
+
+print(ggplot(df3,aes(x=logTP,y=logCHLA,color=time))+
+        geom_point(aes(alpha=0.5))+
+        geom_smooth(method="lm"))
+
+lm.first <- lm(logCHLA~logTP,data=df3[df3$time=="first",])
+lm.last <- lm(logCHLA~logTP,data=df3[df3$time=="last",])
+
+```
+
+```{r}
+lm.first
+lm.last
+```
+
+
 # Variable effects on model residuals
 
 ## Relationship of model residuals to lake characteristic variables {.tabset}
