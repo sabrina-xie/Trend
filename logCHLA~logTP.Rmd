@@ -59,6 +59,7 @@ acid <- acid %>%
   rename(LAKE_ID=name,
          year=YEAR,
          acid=value)
+
 acid <- merge(acid, df, by.y = c("year","LAKE_ID"), by.x = c("year","LAKE_ID"), all.x = TRUE)
 acid <- na.omit(acid)
 
