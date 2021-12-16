@@ -210,6 +210,8 @@ hist(resid(lm2))
 ```
 
 ## Change in trend
+
+Red is overall trend, green is first year of sampling, blue is most recent year of sampling.
 ```{r change trend, echo=FALSE, results="asis", message=FALSE, warning=FALSE, fig.show="hold", out.width="50%"}
 
 df3 <- df2 %>% 
@@ -245,10 +247,19 @@ df3 <- rbind(first,last) %>%
 
 print(ggplot(df3,aes(x=logTP,y=logCHLA,color=time))+
         geom_point(aes(alpha=0.5))+
-        geom_smooth(method="lm"))
+        geom_smooth(method="gam")+
+        labs(title="GAM"))
 
 lm.first <- lm(logCHLA~logTP,data=df3[df3$time=="first",])
 lm.last <- lm(logCHLA~logTP,data=df3[df3$time=="last",])
+
+print(ggplot(df2,aes(x=logTP,y=logCHLA))+
+        geom_point()+
+        geom_abline(slope=lm2$coefficients[2],intercept=lm2$coefficients[1],color="red")+ #overall
+        geom_abline(slope=lm.first$coefficients[2],intercept=lm.first$coefficients[1],color="green")+ #first
+        geom_abline(slope=lm.last$coefficients[2],intercept=lm.last$coefficients[1],color="blue")+ #last
+        labs(title="Linear regression"))
+
 
 ```
 
