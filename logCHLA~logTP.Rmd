@@ -186,11 +186,13 @@ df2$res.lm <- resid(lm2)
 ### Scatterplot without outliers
 
 ```{r scatterplot, class.source = 'fold-show'}
-plot.lm2<- ggplot(df2,aes(x=logTP,y=logCHLA))+
-  geom_point()+
-  geom_smooth(method='lm')+
-  labs(title="Linear log-log model without outliers",x="log TP",y="log CHLA")
-print(plot.lm2)
+print(plot.lm2<- ggplot(df2,aes(x=logTP,y=logCHLA,alpha=0.5))+
+        geom_point()+
+        geom_abline(intercept=lm2$coefficients[1],slope=lm2$coefficients[2],size=1.1)+
+        theme_bw()+
+        theme(legend.position = "none")+
+        ylim(-2.5,6)+
+        xlim(-7.5,-2))
 ```
 
 ### Model statistics
@@ -238,25 +240,29 @@ for(i in 1:length(lakes)){
 }
 
 first <- merge(first,df3,by=c("LAKE_ID","year"),all.x=TRUE) %>% 
-  mutate(time="first")
+  mutate("sampling event"="first")
 last <- merge(last,df3,by=c("LAKE_ID","year"),all.x=TRUE) %>% 
-  mutate(time="last")
+  mutate("sampling event"="last")
 df3 <- rbind(first,last) %>% 
   mutate(logCHLA=log(`CHLOROPHYLL A_OW_T`),
          logTP=log(PHOSPHORUS_OW_T))
 
-print(ggplot(df3,aes(x=logTP,y=logCHLA,color=time))+
+print(ggplot(df3,aes(x=logTP,y=logCHLA,color=`sampling event`))+
         geom_point(aes(alpha=0.5))+
         geom_smooth(method="gam")+
         labs(title="GAM"))
 
-lm.first <- lm(logCHLA~logTP,data=df3[df3$time=="first",])
-lm.last <- lm(logCHLA~logTP,data=df3[df3$time=="last",])
+lm.first <- lm(logCHLA~logTP,data=df3[df3$`sampling event`=="first",])
+lm.last <- lm(logCHLA~logTP,data=df3[df3$`sampling event`=="last",])
 
-print(ggplot(df3,aes(x=logTP,y=logCHLA,color=time))+
-        geom_point(aes(alpha=0.5))+
-        geom_smooth(method="lm")+
-        labs(title="Linear regression"))
+print(ggplot(df3,aes(x=logTP,y=logCHLA,shape=`sampling event`,alpha=0.5))+
+        geom_point()+
+        geom_abline(slope=lm.first$coefficients[2],intercept=lm.first$coefficients[1],linetype="dashed",size=1.1)+
+        geom_abline(slope=lm.last$coefficients[2],intercept=lm.last$coefficients[1],size=1.1)+
+        theme_bw()+
+        theme(legend.position = "none")+
+        ylim(-2.5,6)+
+        xlim(-7.5,-2))
 
 
 ```
