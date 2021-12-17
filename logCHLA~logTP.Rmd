@@ -373,7 +373,7 @@ lm.acid.all <- lm(res~acid,data=acid)
 p1 <- ggplot(data=acid, aes(x=acid,y=res))+
   geom_point()+
   geom_smooth(method='lm')+ 
-  labs(x="Acid deposition",
+  labs(x="N wet deposition",
        y='residuals of LM(logCHLA~logTP)') #plot
 p2 <- ggplot(data=acid, aes(x=acid))+
   geom_density(fill="grey")+
@@ -388,11 +388,11 @@ p2 <- ggplot(data=acid, aes(x=acid))+
         panel.background = element_blank())
 require(gridExtra)
 grid.arrange(p2, p1, ncol = 1, heights = c(1, 5))
-stats[nrow(stats)+1,] <- c("ACID DEPOSITION",
+stats[nrow(stats)+1,] <- c("N WET DEPOSITION",
                            coef(lm.acid.all),
                            summary(lm.acid.all)$coefficients[2,4],
                            summary(lm.acid.all)$r.squared) #coefficients
-vars[nrow(vars)+1,] <- c("ACID DEPOSITION",
+vars[nrow(vars)+1,] <- c("N WET DEPOSITION",
                          paste(min(as.numeric(na.omit(acid$acid))),
                                "-",max(as.numeric(na.omit(acid$acid)))),
                          nrow(acid),
@@ -1200,7 +1200,8 @@ locs <- locs %>%
   rename(LAKE_ID=LAKE_HISTORY_ID)
 
 sites<-merge(slopes,locs,by=c('LAKE_ID'),all.x = TRUE) %>%
-  distinct()
+  distinct() 
+sites$CHLTP <- as.numeric(sites$CHLTP)
 
 #fetch map
 library(ggmap)
@@ -1240,7 +1241,7 @@ locs.map <- ggplot() +
              aes(x=LOCATION_X_COORDINATE,
                  y=LOCATION_Y_COORDINATE,
                  color=CHLTP)) +
-  scale_color_distiller(palette = "RdBu", limits = c(-0.4,0.4))  # do this to leave off the color legend
+  scale_color_distiller(palette = "RdBu", limits = c(-1.257337e-04,1.257337e-04))  # do this to leave off the color legend
 
 print(locs.map)
 ```
